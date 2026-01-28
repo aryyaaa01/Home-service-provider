@@ -1,0 +1,625 @@
+/**
+* Worker Dashboard
+* Shows assigned bookings and allows worker to accept/reject and generate OTP
+*/
+import React, { useEffect, useState } from "react";
+import { useSearchParams, useLocation } from "react-router-dom";
+import api from "../api";
+
+
+function WorkerDashboard() {
+    const [notifications, setNotifications] = useState([]);
+    const [loadingNotifications, setLoadingNotifications] = useState(false);
+    const [bookings, setBookings] = useState([]);
+    const [workerRatings, setWorkerRatings] = useState([]);
+    const [loading, setLoading] = useState({});
+    const location = useLocation();
+
+    // Helper function to convert 24-hour time to 12-hour format
+    const formatTimeTo12Hour = (time24) => {
+        if (!time24) return '';
+
+        // Split the time string (e.g., "13:23") into hours and minutes
+        const [hours, minutes] = time24.split(':').map(Number);
+
+        // Validate inputs
+        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+            return time24; // Return original if invalid
+        }
+
+        // Determine AM or PM
+        const period = hours >= 12 ? 'PM' : 'AM';
+
+        // Convert hour from 24-hour to 12-hour format
+        const hour12 = hours % 12 || 12; // If hour is 0 or 12, display as 12
+
+        // Format the minutes to always have 2 digits
+        const formattedMinutes = minutes.toString().padStart(2, '0');
+
+        return `${hour12}:${formattedMinutes} ${period}`;
+    };
+
+    // Helper function to format the date and time together
+    const formatDateTime = (date, time) => {
+        if (!date || !time) return `${date || ''} at ${time || ''}`;
+        return `${date} at ${formatTimeTo12Hour(time)}`;
+    };
+
+
+    // Extract hash from URL to determine which section to show
+    // If no hash is present, default to showing the bookings section
+    const activeSection = location.hash.replace('#', '') || 'assigned-bookings';
+
+    // Load data on component mount and when active tab changes
+    useEffect(() => {
+        // Fetch worker's assigned bookings
+        api.get("workers/bookings/")
+            .then((res) => setBookings(res.data))
+            .catch((err) => console.error(err));
+
+        // Fetch worker's ratings
+        api.get("workers/me/ratings/")
+            .then((res) => setWorkerRatings(res.data))
+            .catch((err) => console.error(err));
+
+        // Fetch notifications
+        loadNotifications();
+    }, []);
+
+
+
+    const loadNotifications = async () => {
+        setLoadingNotifications(true);
+        try {
+            const response = await api.get('/notifications/');
+            setNotifications(response.data);
+        } catch (error) {
+            console.error('Error fetching notifications:', error);
+        } finally {
+            setLoadingNotifications(false);
+        }
+    };
+
+    const handleDecision = (bookingId, action) => {
+        setLoading({ ...loading, [bookingId]: true });
+
+        api.post(`workers/bookings/${bookingId}/decision/`, { decision: action })
+            .then((res) => {
+                // Reload data
+                api.get("workers/bookings/")
+                    .then((res) => setBookings(res.data));
+                setLoading({ ...loading, [bookingId]: false });
+            })
+            .catch((err) => {
+                console.error(err);
+                setLoading({ ...loading, [bookingId]: false });
+            });
+    };
+
+    const handleGenerateOTP = (bookingId) => {
+        setLoading({ ...loading, [`otp_${bookingId}`]: true });
+
+        api.post(`workers/bookings/${bookingId}/generate-otp/`)
+            .then((res) => {
+                // Show success message
+                alert('OTP generated successfully! Check your email.');
+                // Reload data
+                api.get("workers/bookings/")
+                    .then((res) => setBookings(res.data));
+                setLoading({ ...loading, [`otp_${bookingId}`]: false });
+            })
+            .catch((err) => {
+                console.error('OTP Generation Error:', err);
+                const errorMsg = err.response?.data?.error ||
+                    err.response?.data?.detail ||
+                    'Failed to generate OTP. Please try again.';
+                alert(`Error: ${errorMsg}`);
+                setLoading({ ...loading, [`otp_${bookingId}`]: false });
+            });
+    };
+
+    const handleMarkReached = (bookingId) => {
+        setLoading({ ...loading, [`reached_${bookingId}`]: true });
+
+        api.post(`bookings/${bookingId}/mark-reached/`)
+            .then((res) => {
+                // Show success message
+                alert(res.data.message);
+                // Reload data
+                api.get("workers/bookings/")
+                    .then((res) => setBookings(res.data));
+                setLoading({ ...loading, [`reached_${bookingId}`]: false });
+            })
+            .catch((err) => {
+                console.error('Mark Reached Error:', err);
+                const errorMsg = err.response?.data?.error ||
+                    err.response?.data?.detail ||
+                    'Failed to mark as reached. Please try again.';
+                alert(`Error: ${errorMsg}`);
+                setLoading({ ...loading, [`reached_${bookingId}`]: false });
+            });
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case "PENDING":
+                return "#f39c12";
+            case "ASSIGNED":
+                return "#3498db";
+            case "REACHED":
+                return "#1abc9c";
+            case "IN_PROGRESS":
+                return "#9b59b6";
+            case "COMPLETED":
+                return "#27ae60";
+            case "DELAYED":
+                return "#e67e22";
+            case "CANCELLED":
+                return "#e74c3c";
+            default:
+                return "#95a5a6";
+        }
+    };
+
+    const calculateAverageRating = (ratings) => {
+        if (!ratings || ratings.length === 0) return 0;
+        const sum = ratings.reduce((acc, rating) => acc + rating.rating, 0);
+        return sum / ratings.length;
+    };
+
+    const renderStars = (avgRating) => {
+        const stars = [];
+        const fullStars = Math.floor(avgRating);
+        const hasHalfStar = avgRating % 1 >= 0.5;
+
+        for (let i = 0; i < fullStars; i++) {
+            stars.push(<span key={`full-${i}`} style={{ color: "#f39c12", fontSize: "1.2rem" }}>★</span>);
+        }
+
+        if (hasHalfStar) {
+            stars.push(<span key="half" style={{ color: "#f39c12", fontSize: "1.2rem" }}>☆</span>);
+        }
+
+        const emptyStars = 5 - Math.ceil(avgRating);
+        for (let i = 0; i < emptyStars; i++) {
+            stars.push(<span key={`empty-${i}`} style={{ color: "#bdc3c7", fontSize: "1.2rem" }}>★</span>);
+        }
+
+        return stars;
+    };
+
+    return (
+        <div style={styles.container}>
+            <h1>Worker Dashboard</h1>
+
+            {/* Conditionally render content based on active section */}
+            {(activeSection === 'all' || activeSection === 'assigned-bookings') && (
+                <div id="assigned-bookings" style={styles.section}>
+                    <h2>Your Assigned Bookings</h2>
+                    {bookings.length === 0 ? (
+                        <p>No bookings assigned to you yet.</p>
+                    ) : (
+                        <div style={styles.tableContainer}>
+                            <table style={styles.table}>
+                                <thead>
+                                    <tr style={styles.tableHeader}>
+                                        <th style={styles.th}>ID</th>
+                                        <th style={styles.th}>Service</th>
+                                        <th style={styles.th}>Customer</th>
+                                        <th style={styles.th}>Status</th>
+                                        <th style={styles.th}>Scheduled Time</th>
+                                        <th style={styles.th}>Address</th>
+                                        <th style={styles.th}>Payment</th>
+                                        <th style={styles.th}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {bookings.map((b) => (
+                                        <tr key={b.id} style={styles.tableRow}>
+                                            <td style={styles.td}>{b.id}</td>
+                                            <td style={styles.td}>{b.service_detail?.name}</td>
+                                            <td style={styles.td}>{b.user_username}</td>
+                                            <td style={styles.td}>
+                                                <span style={{
+                                                    ...styles.statusBadge,
+                                                    backgroundColor: getStatusColor(b.status),
+                                                }}>
+                                                    {b.status}
+                                                </span>
+                                            </td>
+                                            <td style={styles.td}>
+                                                {b.scheduled_date && b.scheduled_time ?
+                                                    formatDateTime(b.scheduled_date, b.scheduled_time) :
+                                                    b.date && b.time_slot ?
+                                                        formatDateTime(b.date, b.time_slot) :
+                                                        'N/A at N/A'}
+                                            </td>
+                                            <td style={styles.td}>{b.address}</td>
+                                            <td style={styles.td}>
+                                                {b.payment ? (
+                                                    <div>
+                                                        <div>₹{b.payment.provider_amount}</div>
+                                                        <div style={{ fontSize: '0.8rem', color: '#27ae60' }}>
+                                                            {b.payment.payment_status}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span style={{ color: '#95a5a6', fontStyle: 'italic' }}>Not paid</span>
+                                                )}
+                                            </td>
+                                            <td style={styles.td}>
+                                                {b.status === "ASSIGNED" && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleDecision(b.id, "accept")}
+                                                            disabled={loading[b.id]}
+                                                            style={styles.acceptButton}
+                                                        >
+                                                            {loading[b.id] ? "Processing..." : "Accept"}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDecision(b.id, "reject")}
+                                                            disabled={loading[b.id]}
+                                                            style={styles.rejectButton}
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </>
+                                                )}
+
+                                                {b.status === "CONFIRMED" && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleMarkReached(b.id)}
+                                                            disabled={loading[`reached_${b.id}`]}
+                                                            style={styles.reachedButton}
+                                                        >
+                                                            {loading[`reached_${b.id}`] ? "Marking..." : "Mark as Reached"}
+                                                        </button>
+                                                    </>
+                                                )}
+
+  {b.status === "REACHED"                                                 {b.status === "REACHED" {(b.status === "CONFIRMED" || b.status === "IN_PROGRESS") && ({(b.status === "CONFIRMED" || b.status === "IN_PROGRESS") && ( (                                                {b.status === "REACHED" {(b.status === "CONFIRMED" || b.status === "IN_PROGRESS") && ({(b.status === "CONFIRMED" || b.status === "IN_PROGRESS") && ( ( (
+                                                    <button
+                                                        onClick={() => handleGenerateOTP(b.id)}
+                                                        disabled={loading[`otp_${b.id}`]}
+                                                        style={styles.generateOtpButton}
+                                                    >
+                                                        {loading[`otp_${b.id}`] ? "Generating..." : "Generate OTP"}
+                                                    </button>
+                                                )}
+
+                                                {(b.status === "PENDING" || b.status === "COMPLETED") && (
+                                                    <span style={{ color: "#95a5a6", fontStyle: "italic" }}>N/A</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Your Performance Section - only show when active */}
+            {(activeSection === 'all' || activeSection === 'performance') && (
+                <div id="performance" style={styles.section}>
+                    <h2>Your Performance</h2>
+                    <div style={styles.statsContainer}>
+                        <div style={styles.statCard}>
+                            <h3>Total Jobs</h3>
+                            <p style={styles.statNumber}>{bookings.length}</p>
+                        </div>
+                        <div style={styles.statCard}>
+                            <h3>Average Rating</h3>
+                            <div style={styles.ratingContainer}>
+                                <div style={styles.starsContainer}>
+                                    {renderStars(calculateAverageRating(workerRatings))}
+                                </div>
+                                <p style={styles.statNumber}>{calculateAverageRating(workerRatings).toFixed(1)}/5</p>
+                            </div>
+                        </div>
+                        <div style={styles.statCard}>
+                            <h3>Total Reviews</h3>
+                            <p style={styles.statNumber}>{workerRatings.length}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Customer Reviews Section - only show when active */}
+            {(activeSection === 'all' || activeSection === 'reviews') && (
+                <div id="reviews" style={styles.section}>
+                    <h2>Customer Reviews</h2>
+                    {workerRatings.length === 0 ? (
+                        <p>No reviews yet. Complete more jobs to receive ratings.</p>
+                    ) : (
+                        <div style={styles.reviewsContainer}>
+                            {workerRatings.map((rating) => (
+                                <div key={rating.id} style={styles.reviewCard}>
+                                    <div style={styles.reviewHeader}>
+                                        <div style={styles.starsContainer}>
+                                            {[...Array(5)].map((_, i) => (
+                                                <span key={i} style={{ color: i < rating.rating ? "#f39c12" : "#bdc3c7", fontSize: "1.2rem" }}>
+                                                    ★
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <span style={styles.ratingValue}>{rating.rating}/5</span>
+                                    </div>
+                                    <p style={styles.reviewText}>{rating.review || "No detailed review provided."}</p>
+                                    <div style={styles.reviewMeta}>
+                                        <span>By {rating.user_username}</span>
+                                        <span>{new Date(rating.created_at).toLocaleDateString()}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Your Notifications Section - only show when active */}
+            {(activeSection === 'all' || activeSection === 'notifications') && (
+                <div style={styles.section}>
+                    <h2>Your Notifications</h2>
+                    {loadingNotifications ? (
+                        <p>Loading notifications...</p>
+                    ) : notifications.length === 0 ? (
+                        <div style={styles.noActivity}>
+                            <p>📋 No notifications yet</p>
+                            <p style={styles.activitySubtext}>Your recent notifications will appear here</p>
+                        </div>
+                    ) : (
+                        <div style={styles.notificationsList}>
+                            {notifications.map((notification) => (
+                                <div key={notification.id} style={styles.notificationItem}>
+                                    <div style={styles.notificationIcon}>
+                                        {notification.notification_type === 'ASSIGNMENT' ? '👤' :
+                                            notification.notification_type === 'BOOKING_STATUS' ? '📋' :
+                                                notification.notification_type === 'OTP' ? '🔢' :
+                                                    notification.notification_type === 'PAYMENT' ? '💳' :
+                                                        notification.notification_type === 'BOOKING_REJECTION' ? '❌' : '🔔'}
+                                    </div>
+                                    <div style={styles.notificationContent}>
+                                        <h3>{notification.title}</h3>
+                                        <p>{notification.message}</p>
+                                        <span style={styles.notificationTime}>{new Date(notification.created_at).toLocaleString()}</span>
+                                        {!notification.is_read && (
+                                            <span style={{ color: '#3498db', fontWeight: 'bold', marginLeft: '0.5rem' }}>(New)</span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+const styles = {
+    container: {
+        maxWidth: "1200px",
+        margin: "0 auto",
+        padding: "2rem",
+    },
+    section: {
+        backgroundColor: "rgba(255, 255, 255, 0.8)",
+        padding: "1.5rem",
+        marginBottom: "2rem",
+        borderRadius: "8px",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    },
+    workerDashboardIndicator: {
+        fontSize: "1.1rem",
+        fontWeight: "600",
+        color: "#2c3e50",
+        marginBottom: "1rem",
+        padding: "0.5rem",
+        backgroundColor: "#e3f2fd",
+        borderRadius: "4px",
+        textAlign: "center",
+    },
+
+    statsContainer: {
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+        gap: "1rem",
+        marginBottom: "2rem",
+    },
+    statCard: {
+        backgroundColor: "#f8f9fa",
+        padding: "1.5rem",
+        borderRadius: "8px",
+        textAlign: "center",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    },
+    statNumber: {
+        fontSize: "2rem",
+        fontWeight: "bold",
+        color: "#2c3e50",
+        margin: "0.5rem 0",
+    },
+    ratingContainer: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+    },
+    starsContainer: {
+        display: "flex",
+        justifyContent: "center",
+        gap: "0.2rem",
+        marginBottom: "0.5rem",
+    },
+    reviewsContainer: {
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+    },
+    reviewCard: {
+        backgroundColor: "white",
+        padding: "1rem",
+        borderRadius: "8px",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+        border: "1px solid #eee",
+    },
+    reviewHeader: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: "0.5rem",
+    },
+    ratingValue: {
+        fontWeight: "bold",
+        color: "#2c3e50",
+    },
+    reviewText: {
+        marginBottom: "0.5rem",
+        color: "#34495e",
+    },
+    reviewMeta: {
+        display: "flex",
+        justifyContent: "space-between",
+        fontSize: "0.9rem",
+        color: "#7f8c8d",
+        borderTop: "1px solid #eee",
+        paddingTop: "0.5rem",
+    },
+    tableContainer: {
+        overflowX: "auto",
+    },
+    table: {
+        width: "100%",
+        borderCollapse: "collapse",
+    },
+    tableHeader: {
+        backgroundColor: "#34495e",
+        color: "white",
+    },
+    th: {
+        padding: "0.75rem",
+        textAlign: "left",
+    },
+    tableRow: {
+        borderBottom: "1px solid #ecf0f1",
+    },
+    td: {
+        padding: "0.75rem",
+    },
+    statusBadge: {
+        padding: "0.25rem 0.75rem",
+        borderRadius: "12px",
+        color: "white",
+        fontSize: "0.85rem",
+        fontWeight: "500",
+    },
+    acceptButton: {
+        padding: "0.5rem 1rem",
+        backgroundColor: "#2ecc71",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+        marginRight: "0.5rem",
+    },
+    rejectButton: {
+        padding: "0.5rem 1rem",
+        backgroundColor: "#e74c3c",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+    },
+    generateOtpButton: {
+        padding: "0.5rem 1rem",
+        backgroundColor: "#f39c12",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+    },
+    reachedButton: {
+        padding: "0.5rem 1rem",
+        backgroundColor: "#3498db",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+        marginLeft: "0.5rem",
+    },
+
+    noActivity: {
+        textAlign: "center",
+        padding: "3rem 1rem",
+    },
+    activitySubtext: {
+        color: "#7f8c8d",
+        fontSize: "0.9rem",
+    },
+    notificationsList: {
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+    },
+    notificationItem: {
+        display: "flex",
+        alignItems: "flex-start",
+        padding: "1rem",
+        backgroundColor: "white",
+        borderRadius: "8px",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+        border: "1px solid #eee",
+    },
+    notificationIcon: {
+        fontSize: "1.5rem",
+        marginRight: "1rem",
+        color: "#3498db",
+    },
+    notificationContent: {
+        flex: 1,
+    },
+    notificationTime: {
+        fontSize: "0.8rem",
+        color: "#7f8c8d",
+        marginTop: "0.5rem",
+    },
+    recentActivitySection: {
+        marginTop: "2rem",
+        padding: "1.5rem",
+        backgroundColor: "#f8f9fa",
+        borderRadius: "8px",
+        border: "1px solid #e9ecef",
+    },
+    activityList: {
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+    },
+    activityItem: {
+        display: "flex",
+        alignItems: "flex-start",
+        padding: "1rem",
+        backgroundColor: "white",
+        borderRadius: "8px",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+        border: "1px solid #eee",
+    },
+    activityIcon: {
+        fontSize: "1.5rem",
+        marginRight: "1rem",
+        color: "#3498db",
+    },
+    activityContent: {
+        flex: 1,
+    },
+    activityTime: {
+        fontSize: "0.8rem",
+        color: "#7f8c8d",
+        marginTop: "0.5rem",
+    },
+};
+
+export default WorkerDashboard;

@@ -1,0 +1,391 @@
+/**
+ * Navigation bar component
+ * Shows different links based on user role and authentication status
+ */
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import api from "../api"; // Import the api instance
+
+function Navbar() {
+    const navigate = useNavigate();
+    const location = useLocation(); // Track current location
+    const token = localStorage.getItem("token");
+    const role = localStorage.getItem("role");
+    const username = localStorage.getItem("username");
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    const handleLogout = () => {
+        // Clear all user data from localStorage
+        localStorage.removeItem("token");
+        localStorage.removeItem("role");
+        localStorage.removeItem("username");
+        navigate("/login");
+    };
+
+    // Function to fetch unread notification count
+    const fetchUnreadCount = () => {
+        if (token) {
+            api.get("notifications/")
+                .then((res) => {
+                    const notifications = res.data;
+                    // Get the time when notifications were last viewed
+                    const lastViewed = localStorage.getItem('notificationsViewedAt');
+
+                    // Count notifications that are recent and were created after last view
+                    const now = new Date();
+                    const recentNotifications = notifications.filter(notification => {
+                        const notificationTime = new Date(notification.created_at);
+                        const timeDiff = now - notificationTime;
+                        const hoursDiff = timeDiff / (1000 * 60 * 60);
+
+                        // Check if notification is within last 24 hours AND was created after last viewed time
+                        const isWithin24Hours = hoursDiff < 24;
+                        const wasCreatedAfterLastView = !lastViewed || notificationTime > new Date(lastViewed);
+                        
+                        return isWithin24Hours && wasCreatedAfterLastView;
+                    });
+                    setUnreadCount(recentNotifications.length);
+                })
+                .catch((err) => {
+                    console.error("Error fetching notifications:", err);
+                });
+        }
+    };
+
+    // Update mobile state on window resize
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth <= 768);
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Fetch unread count on component mount and when token changes
+    useEffect(() => {
+        fetchUnreadCount();
+    }, [token, location.pathname]);
+
+    return (
+        <nav style={styles.nav}>
+            <div style={styles.container}>
+                <Link to={token ? (role === "USER" ? "/user-home" : role === "WORKER" ? "/worker-home" : "/admin-home") : "/"} style={styles.brand}>
+                    🏠 Home Service Provider
+                </Link>
+
+                {/* Mobile menu button */}
+                {isMobile && (
+                    <button 
+                        onClick={() => setIsMenuOpen(!isMenuOpen)} 
+                        style={styles.menuButton}
+                        aria-label="Toggle menu"
+                    >
+                        ☰
+                    </button>
+                )}
+
+                {/* Desktop navigation - hidden on mobile */}
+                {!isMobile && (
+                    <div style={styles.links}>
+                        {!token && (
+                            <>
+                                <Link to="/" style={styles.link}>
+                                    Home
+                                </Link>
+                                <Link to="/login" style={styles.link}>
+                                    Login
+                                </Link>
+                                <Link to="/register" style={styles.link}>
+                                    Register
+                                </Link>
+                            </>
+                        )}
+
+                        {token && role === "USER" && (
+                            <>
+                                <Link to="/user-home" style={styles.link}>
+                                    Home
+                                </Link>
+                                <Link to="/user-dashboard" style={styles.link}>
+                                    Home
+                                </Link>
+                            </>
+                        )}
+
+                        {token && role === "WORKER" && (
+                            <>
+                                <Link to="/worker-dashboard" style={styles.link}>
+                                    Home
+                                </Link>
+                                <Link to="/otp" style={styles.link}>
+                                    Verify OTP
+                                </Link>
+                            </>
+                        )}
+
+                        {token && role === "ADMIN" && (
+                            <>
+                                <Link to="/admin-dashboard" style={styles.link}>
+                                    Home
+                                </Link>
+                                <Link to="/admin-dashboard?tab=workers" style={styles.link}>
+                                    Workers
+                                </Link>
+                                <Link to="/admin-dashboard?tab=users" style={styles.link}>
+                                    Users
+                                </Link>
+                                <Link to="/admin-dashboard?tab=bookings" style={styles.link}>
+                                    Bookings
+                                </Link>
+                                <Link to="/admin-dashboard?tab=services" style={styles.link}>
+                                    Services
+                                </Link>
+                                <Link to="/admin-dashboard?tab=ratings" style={styles.link}>
+                                    Ratings & Reviews
+                                </Link>
+                                <Link to="/admin-dashboard?tab=payments" style={styles.link}>
+                                    Payments
+                                </Link>
+                            </>
+                        )}
+
+                        {token && (role === "USER" || role === "WORKER") && (
+                            <>
+                                <Link to="/profile" style={styles.link}>
+                                    Profile
+                                </Link>
+                                <Link to="/notifications" style={styles.link}>
+                                    Notifications
+                                    {unreadCount > 0 && (
+                                        <span style={styles.notificationBadge}>{unreadCount}</span>
+                                    )}
+                                </Link>
+                            </>
+                        )}
+
+                        {token && (
+                            <div style={styles.userSection}>
+                                <span style={styles.username}>
+                                    {username}
+                                </span>
+                                <button onClick={handleLogout} style={styles.logoutBtn}>
+                                    Logout
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Mobile menu - shown only on mobile */}
+            {isMobile && (
+                <div style={isMenuOpen ? styles.mobileMenu : { display: 'none' }}>
+                    {!token && (
+                        <>
+                            <Link to="/" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Home
+                            </Link>
+                            <Link to="/login" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Login
+                            </Link>
+                            <Link to="/register" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Register
+                            </Link>
+                        </>
+                    )}
+
+                    {token && role === "USER" && (
+                        <>
+                            <Link to="/user-home" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Home
+                            </Link>
+                            <Link to="/user-dashboard" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Home
+                            </Link>
+                        </>
+                    )}
+
+                    {token && role === "WORKER" && (
+                        <>
+                            <Link to="/worker-dashboard" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Home
+                            </Link>
+                            <Link to="/otp" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Verify OTP
+                            </Link>
+                        </>
+                    )}
+
+                    {token && role === "ADMIN" && (
+                        <>
+                            <Link to="/admin-dashboard" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Home
+                            </Link>
+                            <Link to="/admin-dashboard?tab=workers" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Workers
+                            </Link>
+                            <Link to="/admin-dashboard?tab=users" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Users
+                            </Link>
+                            <Link to="/admin-dashboard?tab=bookings" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Bookings
+                            </Link>
+                            <Link to="/admin-dashboard?tab=services" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Services
+                            </Link>
+                            <Link to="/admin-dashboard?tab=ratings" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Ratings & Reviews
+                            </Link>
+                            <Link to="/admin-dashboard?tab=payments" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Payments
+                            </Link>
+                        </>
+                    )}
+
+                    {token && (role === "USER" || role === "WORKER") && (
+                        <>
+                            <Link to="/profile" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Profile
+                            </Link>
+                            <Link to="/notifications" style={styles.mobileLink} onClick={() => setIsMenuOpen(false)}>
+                                Notifications
+                                {unreadCount > 0 && (
+                                    <span style={styles.notificationBadge}>{unreadCount}</span>
+                                )}
+                            </Link>
+                        </>
+                    )}
+
+                    {token && (
+                        <div style={styles.mobileUserSection}>
+                            <span style={styles.username}>
+                                {username}
+                            </span>
+                            <button onClick={() => { handleLogout(); setIsMenuOpen(false); }} style={styles.logoutBtn}>
+                                Logout
+                            </button>
+                        </div>
+                    )}
+                </div>
+                )}
+        </nav>
+    );
+}
+
+const styles = {
+    nav: {
+        backgroundColor: "#2c3e50",
+        padding: "1rem 0",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+        position: "sticky",
+        top: 0,
+        zIndex: 1000,
+    },
+    container: {
+        maxWidth: "1200px",
+        margin: "0 auto",
+        padding: "0 2rem",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+    },
+    brand: {
+        color: "white",
+        fontSize: "1.5rem",
+        fontWeight: "bold",
+        textDecoration: "none",
+    },
+    links: {
+        display: "flex",
+        alignItems: "center",
+        gap: "2rem",  /* Increased gap for less tight appearance */
+    },
+    link: {
+        color: "white",
+        textDecoration: "none",
+        padding: "0.75rem 1.25rem",  /* Increased padding for less tight appearance */
+        borderRadius: "6px",
+        transition: "background-color 0.3s",
+        position: "relative", // Needed for badge positioning
+        fontSize: "1rem",
+    },
+    notificationBadge: {
+        position: "absolute",
+        top: "-5px",
+        right: "5px",
+        backgroundColor: "#e74c3c",
+        color: "white",
+        borderRadius: "50%",
+        padding: "0.25rem 0.5rem",
+        fontSize: "0.75rem",
+        fontWeight: "bold",
+        minWidth: "1.2rem",
+        height: "1.2rem",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    userSection: {
+        display: "flex",
+        alignItems: "center",
+        gap: "1.5rem",  /* Increased gap for less tight appearance */
+    },
+    username: {
+        color: "#ecf0f1",
+        fontWeight: "bold",  /* Bold username */
+        fontSize: "1rem",  /* Slightly larger font */
+    },
+    logoutBtn: {
+        backgroundColor: "#e74c3c",
+        color: "white",
+        border: "none",
+        padding: "0.5rem 1.25rem",  /* Increased padding */
+        borderRadius: "6px",
+        cursor: "pointer",
+        fontSize: "0.9rem",
+    },
+    menuButton: {
+        backgroundColor: "transparent",
+        color: "white",
+        border: "none",
+        fontSize: "1.5rem",
+        cursor: "pointer",
+        padding: "0.5rem",
+    },
+    mobileMenu: {
+        position: "absolute",
+        top: "70px",
+        left: "0",
+        right: "0",
+        backgroundColor: "#2c3e50",
+        padding: "1.5rem",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "1.25rem",  /* Increased gap for less tight appearance */
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    },
+    mobileLink: {
+        color: "white",
+        textDecoration: "none",
+        padding: "0.75rem 1.25rem",  /* Increased padding */
+        borderRadius: "6px",
+        transition: "background-color 0.3s",
+        width: "100%",
+        textAlign: "center",
+        position: "relative", // Needed for badge positioning
+        fontSize: "1rem",
+    },
+    mobileUserSection: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "0.75rem",  /* Increased gap */
+        width: "100%",
+    },
+};
+
+export default Navbar;

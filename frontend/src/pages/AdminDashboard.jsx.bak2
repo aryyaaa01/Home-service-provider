@@ -1,0 +1,973 @@
+/**
+ * Admin Dashboard
+ * Allows admin to manage workers, users, and bookings
+ */
+import React, { useState, useEffect } from "react";
+import { useNotification } from "../hooks/useNotification";
+import api from "../api";
+import { useSearchParams, useNavigate } from "react-router-dom";
+
+function AdminDashboard() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const [activeTab, setActiveTab] = useState(() => {
+        const urlTab = searchParams.get('tab');
+        return urlTab || "workers"; // Default tab
+    });
+    const [workers, setWorkers] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [bookings, setBookings] = useState([]);
+    const [allServices, setAllServices] = useState([]);
+    const [ratings, setRatings] = useState([]);
+    const [payments, setPayments] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [selectedBooking, setSelectedBooking] = useState(null);
+    
+    const [newService, setNewService] = useState({
+        name: "",
+        description: "",
+        price: "",
+        duration: "",
+        category: "OTHER"
+    });
+    const { showNotification } = useNotification();
+
+    // Load data on component mount and when active tab changes
+    useEffect(() => {
+        loadData();
+    }, [activeTab]);
+
+    // Update active tab when URL parameters change
+    useEffect(() => {
+        const tabFromUrl = searchParams.get('tab');
+        if (tabFromUrl && activeTab !== tabFromUrl) {
+            setActiveTab(tabFromUrl);
+        }
+    }, [searchParams, activeTab]);
+
+    const loadData = () => {
+        setLoading(true);
+
+        // Load different data based on active tab
+        switch (activeTab) {
+            case "workers":
+                Promise.all([
+                    api.get("admin/workers/"),
+                    api.get("services/")
+                ])
+                    .then(([workersRes, servicesRes]) => {
+                        setWorkers(workersRes.data);
+                        setAllServices(servicesRes.data);
+                    })
+                    .catch(err => {
+                        console.error("Error loading workers:", err);
+                        showNotification("Failed to load workers.", "error");
+                    });
+                break;
+
+            case "users":
+                api.get("admin/users/")
+                    .then(res => setUsers(res.data))
+                    .catch(err => {
+                        console.error("Error loading users:", err);
+                        showNotification("Failed to load users.", "error");
+                    });
+                break;
+
+            case "bookings":
+                api.get("admin/bookings/")
+                    .then(res => setBookings(res.data))
+                    .catch(err => {
+                        console.error("Error loading bookings:", err);
+                        showNotification("Failed to load bookings.", "error");
+                    });
+                break;
+
+            case "services":
+                Promise.all([
+                    api.get("services/"),
+                    api.get("admin/ratings/")
+                ])
+                    .then(([servicesRes, ratingsRes]) => {
+                        setAllServices(servicesRes.data);
+                        setRatings(ratingsRes.data);
+                    })
+                    .catch(err => {
+                        console.error("Error loading services:", err);
+                        showNotification("Failed to load services.", "error");
+                    });
+                break;
+
+            case "ratings":
+                api.get("admin/ratings/")
+                    .then(res => setRatings(res.data))
+                    .catch(err => {
+                        console.error("Error loading ratings:", err);
+                        showNotification("Failed to load ratings.", "error");
+                    });
+                break;
+
+            case "payments":
+                // Load all bookings to get payment information
+                api.get("admin/bookings/")
+                    .then(res => {
+                        // Filter bookings that have payments
+                        const bookingsWithPayments = res.data.filter(booking => booking.payment);
+                        setPayments(bookingsWithPayments);
+                    })
+                    .catch(err => {
+                        console.error("Error loading payments:", err);
+                        showNotification("Failed to load payments.", "error");
+                    });
+                break;
+
+            default:
+                break;
+        }
+
+        setLoading(false);
+    };
+
+    const handleTabChange = (tabName) => {
+        setActiveTab(tabName);
+        setSearchParams({ tab: tabName });
+    };
+
+    const handleApproval = (workerId, action) => {
+        api.post(`admin/workers/${workerId}/approval/`, { action })
+            .then(res => {
+                showNotification(res.data.detail || 'Action completed successfully', "success");
+                // Refresh data
+                loadData();
+            })
+            .catch(err => {
+                console.error("Error updating worker approval:", err);
+                const errorMsg = err.response?.data?.error || "Failed to update worker approval.";
+                showNotification(errorMsg, "error");
+            });
+    };
+
+    const handleAssignWorker = (bookingId, workerId) => {
+        api.post(`admin/bookings/${bookingId}/assign-worker/`, { worker_id: workerId })
+            .then(res => {
+                showNotification(res.data.message, "success");
+                // Close modal and refresh data
+                setSelectedBooking(null);
+                loadData();
+            })
+            .catch(err => {
+                console.error("Error assigning worker:", err);
+                const errorMsg = err.response?.data?.error || "Failed to assign worker.";
+                showNotification(errorMsg, "error");
+            });
+    };
+
+    const handleCreateService = (e) => {
+        e.preventDefault();
+        setLoading(true);
+
+        // Prepare service data with correct field names
+        const serviceData = {
+            name: newService.name,
+            description: newService.description,
+            price: newService.price,
+            estimated_duration: newService.duration,
+            category: newService.category
+        };
+
+        api.post("services/", serviceData)
+            .then(res => {
+                showNotification("Service created successfully!", "success");
+                // Reset form and refresh data
+                setNewService({ name: "", description: "", price: "", duration: "" });
+                setShowServiceForm(false);
+                loadData();
+            })
+            .catch(err => {
+                console.error("Error creating service:", err);
+                const errorMsg = err.response?.data?.name?.[0] || "Failed to create service.";
+                showNotification(errorMsg, "error");
+            })
+            .finally(() => setLoading(false));
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case "PENDING":
+                return "#f39c12";
+            case "ASSIGNED":
+                return "#3498db";
+            case "IN_PROGRESS":
+                return "#9b59b6";
+            case "COMPLETED":
+                return "#27ae60";
+            default:
+                return "#95a5a6";
+        }
+    };
+
+    return (
+        <div style={styles.container}>
+            <h1>Admin Dashboard</h1>
+
+            {/* Navigation Tabs */}
+            <div style={styles.tabNavigation}>
+                <button 
+                    style={activeTab === "workers" ? {...styles.tabButton, ...styles.activeTab} : styles.tabButton}
+                    onClick={() => handleTabChange("workers")}
+                >
+                    Workers
+                </button>
+                <button 
+                    style={activeTab === "users" ? {...styles.tabButton, ...styles.activeTab} : styles.tabButton}
+                    onClick={() => handleTabChange("users")}
+                >
+                    Users
+                </button>
+                <button 
+                    style={activeTab === "bookings" ? {...styles.tabButton, ...styles.activeTab} : styles.tabButton}
+                    onClick={() => handleTabChange("bookings")}
+                >
+                    Bookings
+                </button>
+                <button 
+                    style={activeTab === "services" ? {...styles.tabButton, ...styles.activeTab} : styles.tabButton}
+                    onClick={() => handleTabChange("services")}
+                >
+                    Services
+                </button>
+                <button 
+                    style={activeTab === "ratings" ? {...styles.tabButton, ...styles.activeTab} : styles.tabButton}
+                    onClick={() => handleTabChange("ratings")}
+                >
+                    Ratings & Reviews
+                </button>
+                <button 
+                    style={activeTab === "payments" ? {...styles.tabButton, ...styles.activeTab} : styles.tabButton}
+                    onClick={() => handleTabChange("payments")}
+                >
+                    Payments
+                </button>
+            </div>
+
+            {/* Loading indicator */}
+            {loading && <p style={styles.loading}>Loading...</p>}
+
+            {/* Workers Tab */}
+            {activeTab === "workers" && (
+                <div style={styles.section}>
+                    <h2>Manage Workers</h2>
+                    {workers.length === 0 ? (
+                        <p>No workers registered yet.</p>
+                    ) : (
+                        <div style={styles.tableContainer}>
+                            <table style={styles.table}>
+                                <thead>
+                                    <tr style={styles.tableHeader}>
+                                        <th style={styles.th}>ID</th>
+                                        <th style={styles.th}>Username</th>
+                                        <th style={styles.th}>Email</th>
+                                        <th style={styles.th}>Phone</th>
+                                        <th style={styles.th}>Services</th>
+                                        <th style={styles.th}>Approved</th>
+                                        <th style={styles.th}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {workers.map((w) => (
+                                        <tr key={w.id} style={styles.tableRow}>
+                                            <td style={styles.td}>{w.id}</td>
+                                            <td style={styles.td}>{w.username}</td>
+                                            <td style={styles.td}>{w.email}</td>
+                                            <td style={styles.td}>{w.phone_number || 'Not provided'}</td>
+                                            <td style={styles.td}>
+                                                {w.services && w.services.length > 0 ? (
+                                                    <div>
+                                                        {w.services.map(service => (
+                                                            <span key={service.id} style={{
+                                                                display: 'inline-block',
+                                                                padding: '2px 6px',
+                                                                margin: '2px',
+                                                                backgroundColor: '#3498db',
+                                                                color: 'white',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.8rem'
+                                                            }}>
+                                                                {service.name}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span style={{ color: '#e74c3c' }}>No services</span>
+                                                )}
+                                            </td>
+                                            <td style={styles.td}>
+                                                {w.is_approved ? (
+                                                    <span style={{ color: '#27ae60', fontWeight: 'bold' }}>Approved</span>
+                                                ) : (
+                                                    <span style={{ color: '#e74c3c', fontWeight: 'bold' }}>Pending</span>
+                                                )}
+                                            </td>
+                                            <td style={styles.td}>
+                                                {!w.is_approved && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleApproval(w.id, 'approve')}
+                                                            style={styles.approveButton}
+                                                        >
+                                                            Approve
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleApproval(w.id, 'reject')}
+                                                            style={styles.rejectButton}
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </>
+                                                )}
+                                                {w.is_approved && (
+                                                    <button
+                                                        onClick={() => handleApproval(w.id, 'unapprove')}
+                                                        style={styles.unapproveButton}
+                                                    >
+                                                        Unapprove
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Users Tab */}
+            {activeTab === "users" && (
+                <div style={styles.section}>
+                    <h2>Manage Users</h2>
+                    {users.length === 0 ? (
+                        <p>No users registered yet.</p>
+                    ) : (
+                        <div style={styles.tableContainer}>
+                            <table style={styles.table}>
+                                <thead>
+                                    <tr style={styles.tableHeader}>
+                                        <th style={styles.th}>ID</th>
+                                        <th style={styles.th}>Username</th>
+                                        <th style={styles.th}>Email</th>
+                                        <th style={styles.th}>Phone</th>
+                                        <th style={styles.th}>Registration Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {users.map((u) => (
+                                        <tr key={u.id} style={styles.tableRow}>
+                                            <td style={styles.td}>{u.id}</td>
+                                            <td style={styles.td}>{u.username}</td>
+                                            <td style={styles.td}>{u.email}</td>
+                                            <td style={styles.td}>{u.phone_number || 'Not provided'}</td>
+                                            <td style={styles.td}>{u.date_joined ? new Date(u.date_joined).toLocaleDateString() : 'N/A'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Bookings Tab */}
+            {activeTab === "bookings" && (
+                <div style={styles.section}>
+                    <h2>Manage Bookings</h2>
+                    {bookings.length === 0 ? (
+                        <p>No bookings created yet.</p>
+                    ) : (
+                        <div style={styles.tableContainer}>
+                            <table style={styles.table}>
+                                <thead>
+                                    <tr style={styles.tableHeader}>
+                                        <th style={styles.th}>ID</th>
+                                        <th style={styles.th}>User</th>
+                                        <th style={styles.th}>Service</th>
+                                        <th style={styles.th}>Worker</th>
+                                        <th style={styles.th}>Scheduled Date</th>
+                                        <th style={styles.th}>Scheduled Time</th>
+                                        <th style={styles.th}>Status</th>
+                                        <th style={styles.th}>Amount</th>
+                                        <th style={styles.th}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {bookings.map((b) => (
+                                        <tr key={b.id} style={styles.tableRow}>
+                                            <td style={styles.td}>{b.id}</td>
+                                            <td style={styles.td}>{b.user_username}</td>
+                                            <td style={styles.td}>{b.service_name}</td>
+                                            <td style={styles.td}>{b.worker_username || 'Not assigned'}</td>
+                                            <td style={styles.td}>{b.scheduled_date}</td>
+                                            <td style={styles.td}>{b.scheduled_time}</td>
+                                            <td style={styles.td}>
+                                                <span style={{ 
+                                                    color: getStatusColor(b.status),
+                                                    fontWeight: 'bold'
+                                                }}>
+                                                    {b.status}
+                                                </span>
+                                            </td>
+                                            <td style={styles.td}>₹{b.total_cost}</td>
+                                            <td style={styles.td}>
+                                                {(b.status === 'PENDING' || b.status === 'ASSIGNED') && !b.worker_username && (
+                                                    <button
+                                                        onClick={() => setSelectedBooking(b)}
+                                                        style={styles.assignButton}
+                                                    >
+                                                        Assign Worker
+                                                    </button>
+                                                )}
+                                                {b.status === 'PENDING' && b.worker_username && (
+                                                    <button
+                                                        onClick={() => handleAssignWorker(b.id, b.worker_id)}
+                                                        style={styles.assignButton}
+                                                    >
+                                                        Start Work
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Services Tab */}
+            {activeTab === "services" && (
+                <div style={styles.section}>
+                    <div style={styles.servicesHeader}>
+                        <h2>Manage Services</h2>
+                        <button 
+                            onClick={() => setShowServiceForm(!showServiceForm)}
+                            style={styles.addButton}
+                        >
+                            {showServiceForm ? "Cancel" : "Add Service"}
+                        </button>
+                    </div>
+
+                    {/* Add Service Form */}
+                    {showServiceForm && (
+                        <div style={styles.addServiceForm}>
+                            <h3>Add New Service</h3>
+                            <form style={styles.form} onSubmit={handleCreateService}>
+                                <div style={styles.formRow}>
+                                    <div style={styles.formGroup}>
+                                        <label style={styles.label}>Service Name *</label>
+                                        <input
+                                            type="text"
+                                            value={newService.name}
+                                            onChange={(e) => setNewService({...newService, name: e.target.value})}
+                                            style={styles.input}
+                                            required
+                                        />
+                                    </div>
+                                    <div style={styles.formGroup}>
+                                        <label style={styles.label}>Price (₹) *</label>
+                                        <input
+                                            type="number"
+                                            value={newService.price}
+                                            onChange={(e) => setNewService({...newService, price: e.target.value})}
+                                            style={styles.input}
+                                            required
+                                            min="0"
+                                        />
+                                    </div>
+                                    <div style={styles.formGroup}>
+                                        <label style={styles.label}>Duration (hours) *</label>
+                                        <input
+                                            type="number"
+                                            value={newService.duration}
+                                            onChange={(e) => setNewService({...newService, duration: e.target.value})}
+                                            style={styles.input}
+                                            required
+                                            min="0"
+                                        />
+                                    </div>
+                                    <div style={styles.formGroup}>
+                                        <label style={styles.label}>Category</label>
+                                        <select
+                                            value={newService.category}
+                                            onChange={(e) => setNewService({...newService, category: e.target.value})}
+                                            style={styles.input}
+                                        >
+                                            <option value="CLEANING">Cleaning</option>
+                                            <option value="ELECTRICIAN">Electrician</option>
+                                            <option value="PLUMBER">Plumber</option>
+                                            <option value="CARPENTER">Carpenter</option>
+                                            <option value="PAINTER">Painter</option>
+                                            <option value="AC_REPAIR">AC Repair</option>
+                                            <option value="OTHER">Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>Description</label>
+                                    <textarea
+                                        value={newService.description}
+                                        onChange={(e) => setNewService({...newService, description: e.target.value})}
+                                        style={{...styles.input, ...styles.textarea}}
+                                        rows="3"
+                                    ></textarea>
+                                </div>
+                                <button type="submit" style={styles.submitButton} disabled={loading}>
+                                    {loading ? "Creating..." : "Create Service"}
+                                </button>
+                            </form>
+                        </div>
+                    )}
+
+                    {/* Existing Services */}
+                    <div style={styles.servicesList}>
+                        <h3>Existing Services</h3>
+                        {allServices.length === 0 ? (
+                            <p>No services created yet.</p>
+                        ) : (
+                            <div style={styles.tableContainer}>
+                                <table style={styles.table}>
+                                    <thead>
+                                        <tr style={styles.tableHeader}>
+                                            <th style={styles.th}>ID</th>
+                                            <th style={styles.th}>Name</th>
+                                            <th style={styles.th}>Description</th>
+                                            <th style={styles.th}>Price</th>
+                                            <th style={styles.th}>Duration</th>
+                                            <th style={styles.th}>Category</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {allServices.map((s) => (
+                                            <tr key={s.id} style={styles.tableRow}>
+                                                <td style={styles.td}>{s.id}</td>
+                                                <td style={styles.td}>{s.name}</td>
+                                                <td style={styles.td}>{s.description || 'No description'}</td>
+                                                <td style={styles.td}>₹{s.price}</td>
+                                                <td style={styles.td}>{s.estimated_duration} hours</td>
+                                                <td style={styles.td}>{s.category.replace('_', ' ')}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Ratings & Reviews Tab */}
+            {activeTab === "ratings" && (
+                <div style={styles.section}>
+                    <h2>Ratings & Reviews</h2>
+                    {ratings.length === 0 ? (
+                        <p>No ratings and reviews yet.</p>
+                    ) : (
+                        <div style={styles.tableContainer}>
+                            <table style={styles.table}>
+                                <thead>
+                                    <tr style={styles.tableHeader}>
+                                        <th style={styles.th}>Booking ID</th>
+                                        <th style={styles.th}>User</th>
+                                        <th style={styles.th}>Worker</th>
+                                        <th style={styles.th}>Service</th>
+                                        <th style={styles.th}>Rating</th>
+                                        <th style={styles.th}>Review</th>
+                                        <th style={styles.th}>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {ratings.map((rating) => (
+                                        <tr key={rating.id} style={styles.tableRow}>
+                                            <td style={styles.td}>{rating.booking}</td>
+                                            <td style={styles.td}>{rating.user_username}</td>
+                                            <td style={styles.td}>{rating.worker_username}</td>
+                                            <td style={styles.td}>{rating.service_name}</td>
+                                            <td style={styles.td}>
+                                                <div style={{ display: "flex", alignItems: "center" }}>
+                                                    {[...Array(5)].map((_, i) => (
+                                                        <span key={i} style={{ color: i < rating.rating ? "#f39c12" : "#bdc3c7", fontSize: "1.2rem" }}>
+                                                            ★
+                                                        </span>
+                                                    ))}
+                                                    <span style={{ marginLeft: "0.5rem", fontWeight: "bold" }}>{rating.rating}/5</span>
+                                                </div>
+                                            </td>
+                                            <td style={styles.td}>{rating.review || 'No review'}</td>
+                                            <td style={styles.td}>{rating.created_at ? new Date(rating.created_at).toLocaleDateString() : 'N/A'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Payments Tab */}
+            {activeTab === "payments" && (
+                <div style={styles.section}>
+                    <h2>Payment Transactions</h2>
+                    {payments.length === 0 ? (
+                        <p>No payment transactions recorded yet.</p>
+                    ) : (
+                        <div style={styles.tableContainer}>
+                            <table style={styles.table}>
+                                <thead>
+                                    <tr style={styles.tableHeader}>
+                                        <th style={styles.th}>Booking ID</th>
+                                        <th style={styles.th}>User</th>
+                                        <th style={styles.th}>Service</th>
+                                        <th style={styles.th}>Worker</th>
+                                        <th style={styles.th}>Total Amount</th>
+                                        <th style={styles.th}>Admin Commission (20%)</th>
+                                        <th style={styles.th}>Provider Amount (80%)</th>
+                                        <th style={styles.th}>Payment Status</th>
+                                        <th style={styles.th}>Payment Method</th>
+                                        <th style={styles.th}>Transaction ID</th>
+                                        <th style={styles.th}>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {payments.map((booking) => (
+                                        <tr key={booking.id} style={styles.tableRow}>
+                                            <td style={styles.td}>{booking.id}</td>
+                                            <td style={styles.td}>{booking.user_username}</td>
+                                            <td style={styles.td}>{booking.service_name}</td>
+                                            <td style={styles.td}>{booking.worker_username || "Not assigned"}</td>
+                                            <td style={styles.td}>₹{booking.payment.total_amount}</td>
+                                            <td style={styles.td}>₹{booking.payment.admin_commission}</td>
+                                            <td style={styles.td}>₹{booking.payment.provider_amount}</td>
+                                            <td style={styles.td}>
+                                                <span style={{ 
+                                                    color: booking.payment.status === 'SUCCESS' ? '#27ae60' : 
+                                                           booking.payment.status === 'PENDING' ? '#f39c12' : 
+                                                           '#e74c3c',
+                                                    fontWeight: 'bold'
+                                                }}>
+                                                    {booking.payment.status}
+                                                </span>
+                                            </td>
+                                            <td style={styles.td}>{booking.payment.payment_method}</td>
+                                            <td style={styles.td}>{booking.payment.transaction_id}</td>
+                                            <td style={styles.td}>{booking.created_at ? new Date(booking.created_at).toLocaleDateString() : 'N/A'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Worker Assignment Modal */}
+            {selectedBooking && (
+                <div style={styles.modalOverlay}>
+                    <div style={styles.modal}>
+                        <h3>Assign Worker to Booking #{selectedBooking.id}</h3>
+                        <p>Service: {selectedBooking.service_name}</p>
+                        <p>Customer: {selectedBooking.user_username}</p>
+                        <p>Scheduled: {selectedBooking.scheduled_date} at {selectedBooking.scheduled_time}</p>
+
+                        <div style={styles.modalContent}>
+                            <h4>Available Workers</h4>
+                            {/* Get the service category for the selected booking */}
+                            {(() => {
+                                const bookingService = allServices.find(service => service.name === selectedBooking.service_name);
+                                const requiredCategory = bookingService ? bookingService.category : null;
+
+                                // Filter workers who are approved and provide the required service category
+                                const availableWorkers = workers.filter(w => {
+                                    return w.is_approved &&
+                                        w.services &&
+                                        Array.isArray(w.services) &&
+                                        w.services.some(s => s.name === selectedBooking.service_name);
+                                });
+
+                                if (availableWorkers.length === 0) {
+                                    return (
+                                        <p>
+                                            No {requiredCategory ? requiredCategory.toLowerCase() : 'qualified'} workers available for this service.
+                                        </p>
+                                    );
+                                }
+
+                                return (
+                                    <ul style={styles.workerList}>
+                                        {availableWorkers.map((w) => (
+                                            <li key={w.id} style={styles.workerItem}>
+                                                <div>
+                                                    <strong>{w.username}</strong>
+                                                    <div style={{ fontSize: '0.9em', color: '#7f8c8d' }}>
+                                                        {w.services && w.services.length > 0
+                                                            ? `Specializes in: ${w.services.map(s => s.name).join(', ')}`
+                                                            : 'No specializations defined'}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleAssignWorker(selectedBooking.id, w.id)}
+                                                    style={styles.assignWorkerButton}
+                                                >
+                                                    Assign
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                );
+                            })()}
+                        </div>
+
+                        <button
+                            onClick={() => setSelectedBooking(null)}
+                            style={styles.closeModalButton}
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+const styles = {
+    container: {
+        padding: "2rem",
+        fontFamily: "Arial, sans-serif",
+    },
+    tabNavigation: {
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "0.5rem",
+        marginBottom: "2rem",
+    },
+    tabButton: {
+        padding: "0.75rem 1.5rem",
+        backgroundColor: "#ecf0f1",
+        border: "1px solid #bdc3c7",
+        borderRadius: "4px 4px 0 0",
+        cursor: "pointer",
+        fontWeight: "500",
+        color: "#2c3e50",
+    },
+    activeTab: {
+        backgroundColor: "#3498db",
+        color: "white",
+        borderBottom: "2px solid #fff",
+    },
+    section: {
+        backgroundColor: "white",
+        padding: "1.5rem",
+        borderRadius: "8px",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    },
+    loading: {
+        textAlign: "center",
+        padding: "2rem",
+        fontSize: "1.2rem",
+        color: "#7f8c8d",
+    },
+    tableContainer: {
+        overflowX: "auto",
+    },
+    table: {
+        width: "100%",
+        borderCollapse: "collapse",
+        marginTop: "1rem",
+    },
+    tableHeader: {
+        backgroundColor: "#f8f9fa",
+    },
+    th: {
+        padding: "0.75rem",
+        textAlign: "left",
+        borderBottom: "2px solid #dee2e6",
+        fontWeight: "bold",
+        color: "#495057",
+    },
+    tableRow: {
+        borderBottom: "1px solid #dee2e6",
+    },
+    td: {
+        padding: "0.75rem",
+        borderBottom: "1px solid #dee2e6",
+    },
+    approveButton: {
+        padding: "0.5rem 1rem",
+        backgroundColor: "#2ecc71",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+        marginRight: "0.5rem",
+    },
+    rejectButton: {
+        padding: "0.5rem 1rem",
+        backgroundColor: "#e74c3c",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+        marginRight: "0.5rem",
+    },
+    unapproveButton: {
+        padding: "0.5rem 1rem",
+        backgroundColor: "#f39c12",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+    },
+    assignButton: {
+        padding: "0.5rem 1rem",
+        backgroundColor: "#3498db",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+    },
+    assignWorkerButton: {
+        padding: "0.25rem 0.75rem",
+        backgroundColor: "#9b59b6",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+        fontSize: "0.8rem",
+    },
+    modalOverlay: {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+    },
+    modal: {
+        backgroundColor: "white",
+        padding: "2rem",
+        borderRadius: "8px",
+        width: "90%",
+        maxWidth: "600px",
+        maxHeight: "90vh",
+        overflowY: "auto",
+    },
+    modalContent: {
+        marginTop: "1rem",
+    },
+    workerList: {
+        listStyle: "none",
+        padding: 0,
+    },
+    workerItem: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "0.75rem",
+        borderBottom: "1px solid #ecf0f1",
+    },
+    closeModalButton: {
+        marginTop: "1rem",
+        padding: "0.75rem 1.5rem",
+        backgroundColor: "#95a5a6",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+    },
+    servicesHeader: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: "1rem",
+    },
+    addButton: {
+        padding: "0.75rem 1.5rem",
+        backgroundColor: "#2ecc71",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+    },
+    addServiceForm: {
+        backgroundColor: "#f8f9fa",
+        padding: "1.5rem",
+        borderRadius: "8px",
+        marginBottom: "2rem",
+    },
+    form: {
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+    },
+    formRow: {
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+        gap: "1rem",
+    },
+    formGroup: {
+        display: "flex",
+        flexDirection: "column",
+    },
+    label: {
+        marginBottom: "0.5rem",
+        fontWeight: "500",
+        color: "#34495e",
+    },
+    input: {
+        padding: "0.75rem",
+        border: "1px solid #ddd",
+        borderRadius: "4px",
+        fontSize: "1rem",
+    },
+    textarea: {
+        padding: "0.75rem",
+        border: "1px solid #ddd",
+        borderRadius: "4px",
+        fontSize: "1rem",
+        resize: "vertical",
+    },
+    submitButton: {
+        padding: "0.75rem",
+        backgroundColor: "#3498db",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        fontSize: "1rem",
+        fontWeight: "500",
+        cursor: "pointer",
+        alignSelf: "flex-start",
+    },
+    servicesList: {
+        marginTop: "2rem",
+    },
+    ratingDisplay: {
+        display: "flex",
+        alignItems: "center",
+        gap: "0.5rem",
+    },
+    ratingStars: {
+        color: "#f39c12",
+        fontSize: "1.1rem",
+    },
+    ratingValue: {
+        fontSize: "0.9rem",
+        color: "#7f8c8d",
+    },
+};
+
+export default AdminDashboard;

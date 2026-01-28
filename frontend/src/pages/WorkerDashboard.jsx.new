@@ -1,0 +1,280 @@
+/**
+* Worker Dashboard
+* Shows assigned bookings and allows worker to accept/reject and generate OTP
+*/
+import React, { useEffect, useState } from "react";
+import { useSearchParams, useLocation } from "react-router-dom";
+import api from "../api";
+
+
+function WorkerDashboard() {
+    const [notifications, setNotifications] = useState([]);
+    const [loadingNotifications, setLoadingNotifications] = useState(false);
+    const [bookings, setBookings] = useState([]);
+    const [workerRatings, setWorkerRatings] = useState([]);
+    const [loading, setLoading] = useState({});
+    const location = useLocation();
+
+    // Helper function to convert 24-hour time to 12-hour format
+    const formatTimeTo12Hour = (time24) => {
+        if (!time24) return '';
+
+        // Split the time string (e.g., "13:23") into hours and minutes
+        const [hours, minutes] = time24.split(':').map(Number);
+
+        // Validate inputs
+        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+            return time24; // Return original if invalid
+        }
+
+        // Determine AM or PM
+        const period = hours >= 12 ? 'PM' : 'AM';
+
+        // Convert hour from 24-hour to 12-hour format
+        const hour12 = hours % 12 || 12; // If hour is 0 or 12, display as 12
+
+        // Format the minutes to always have 2 digits
+        const formattedMinutes = minutes.toString().padStart(2, '0');
+
+        return `${hour12}:${formattedMinutes} ${period}`;
+    };
+
+    // Helper function to format the date and time together
+    const formatDateTime = (date, time) => {
+        if (!date || !time) return `${date || ''} at ${time || ''}`;
+        return `${date} at ${formatTimeTo12Hour(time)}`;
+    };
+
+
+    // Extract hash from URL to determine which section to show
+    // If no hash is present, default to showing the bookings section
+    const activeSection = location.hash.replace('#', '') || 'assigned-bookings';
+
+    // Load data on component mount and when active tab changes
+    useEffect(() => {
+        // Fetch worker's assigned bookings
+        api.get("workers/bookings/")
+            .then((res) => setBookings(res.data))
+            .catch((err) => console.error(err));
+
+        // Fetch worker's ratings
+        api.get("workers/me/ratings/")
+            .then((res) => setWorkerRatings(res.data))
+            .catch((err) => console.error(err));
+
+        // Fetch notifications
+        loadNotifications();
+    }, []);
+
+
+
+    const loadNotifications = async () => {
+        setLoadingNotifications(true);
+        try {
+            const response = await api.get('/notifications/');
+            setNotifications(response.data);
+        } catch (error) {
+            console.error('Error fetching notifications:', error);
+        } finally {
+            setLoadingNotifications(false);
+        }
+    };
+
+    const handleDecision = (bookingId, action) => {
+        setLoading({ ...loading, [bookingId]: true });
+
+        api.post(`workers/bookings/${bookingId}/decision/`, { decision: action })
+            .then((res) => {
+                // Reload data
+                api.get("workers/bookings/")
+                    .then((res) => setBookings(res.data));
+                setLoading({ ...loading, [bookingId]: false });
+            })
+            .catch((err) => {
+                console.error(err);
+                setLoading({ ...loading, [bookingId]: false });
+            });
+    };
+
+    const handleGenerateOTP = (bookingId) => {
+        setLoading({ ...loading, [`otp_${bookingId}`]: true });
+
+        api.post(`workers/bookings/${bookingId}/generate-otp/`)
+            .then((res) => {
+                // Show success message
+                alert('OTP generated successfully! Check your email.');
+                // Reload data
+                api.get("workers/bookings/")
+                    .then((res) => setBookings(res.data));
+                setLoading({ ...loading, [`otp_${bookingId}`]: false });
+            })
+            .catch((err) => {
+                console.error('OTP Generation Error:', err);
+                const errorMsg = err.response?.data?.error ||
+                    err.response?.data?.detail ||
+                    'Failed to generate OTP. Please try again.';
+                alert(`Error: ${errorMsg}`);
+                setLoading({ ...loading, [`otp_${bookingId}`]: false });
+            });
+    };
+
+    const handleMarkReached = (bookingId) => {
+        setLoading({ ...loading, [`reached_${bookingId}`]: true });
+
+        api.post(`bookings/${bookingId}/mark-reached/`)
+            .then((res) => {
+                // Show success message
+                alert(res.data.message);
+                // Reload data
+                api.get("workers/bookings/")
+                    .then((res) => setBookings(res.data));
+                setLoading({ ...loading, [`reached_${bookingId}`]: false });
+            })
+            .catch((err) => {
+                console.error('Mark Reached Error:', err);
+                const errorMsg = err.response?.data?.error ||
+                    err.response?.data?.detail ||
+                    'Failed to mark as reached. Please try again.';
+                alert(`Error: ${errorMsg}`);
+                setLoading({ ...loading, [`reached_${bookingId}`]: false });
+            });
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case "PENDING":
+                return "#f39c12";
+            case "ASSIGNED":
+                return "#3498db";
+            case "REACHED":
+                return "#1abc9c";
+            case "IN_PROGRESS":
+                return "#9b59b6";
+            case "COMPLETED":
+                return "#27ae60";
+            case "DELAYED":
+                return "#e67e22";
+            case "CANCELLED":
+                return "#e74c3c";
+            default:
+                return "#95a5a6";
+        }
+    };
+
+    const calculateAverageRating = (ratings) => {
+        if (!ratings || ratings.length === 0) return 0;
+        const sum = ratings.reduce((acc, rating) => acc + rating.rating, 0);
+        return sum / ratings.length;
+    };
+
+    const renderStars = (avgRating) => {
+        const stars = [];
+        const fullStars = Math.floor(avgRating);
+        const hasHalfStar = avgRating % 1 >= 0.5;
+
+        for (let i = 0; i < fullStars; i++) {
+            stars.push(<span key={`full-${i}`} style={{ color: "#f39c12", fontSize: "1.2rem" }}>★</span>);
+        }
+
+        if (hasHalfStar) {
+            stars.push(<span key="half" style={{ color: "#f39c12", fontSize: "1.2rem" }}>☆</span>);
+        }
+
+        const emptyStars = 5 - Math.ceil(avgRating);
+        for (let i = 0; i < emptyStars; i++) {
+            stars.push(<span key={`empty-${i}`} style={{ color: "#bdc3c7", fontSize: "1.2rem" }}>★</span>);
+        }
+
+        return stars;
+    };
+
+    return (
+        <div style={styles.container}>
+            <h1>Worker Dashboard</h1>
+
+            {/* Conditionally render content based on active section */}
+            {(activeSection === 'all' || activeSection === 'assigned-bookings') && (
+                <div id="assigned-bookings" style={styles.section}>
+                    <h2>Your Assigned Bookings</h2>
+                    {bookings.length === 0 ? (
+                        <p>No bookings assigned to you yet.</p>
+                    ) : (
+                        <div style={styles.tableContainer}>
+                            <table style={styles.table}>
+                                <thead>
+                                    <tr style={styles.tableHeader}>
+                                        <th style={styles.th}>ID</th>
+                                        <th style={styles.th}>Service</th>
+                                        <th style={styles.th}>Customer</th>
+                                        <th style={styles.th}>Status</th>
+                                        <th style={styles.th}>Scheduled Time</th>
+                                        <th style={styles.th}>Address</th>
+                                        <th style={styles.th}>Payment</th>
+                                        <th style={styles.th}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {bookings.map((b) => (
+                                        <tr key={b.id} style={styles.tableRow}>
+                                            <td style={styles.td}>{b.id}</td>
+                                            <td style={styles.td}>{b.service_detail?.name}</td>
+                                            <td style={styles.td}>{b.user_username}</td>
+                                            <td style={styles.td}>
+                                                <span style={{
+                                                    ...styles.statusBadge,
+                                                    backgroundColor: getStatusColor(b.status),
+                                                }}>
+                                                    {b.status}
+                                                </span>
+                                            </td>
+                                            <td style={styles.td}>
+                                                {b.scheduled_date && b.scheduled_time ?
+                                                    formatDateTime(b.scheduled_date, b.scheduled_time) :
+                                                    b.date && b.time_slot ?
+                                                        formatDateTime(b.date, b.time_slot) :
+                                                        'N/A at N/A'}
+                                            </td>
+                                            <td style={styles.td}>{b.address}</td>
+                                            <td style={styles.td}>
+                                                {b.payment ? (
+                                                    <div>
+                                                        <div>₹{b.payment.provider_amount}</div>
+                                                        <div style={{ fontSize: '0.8rem', color: '#27ae60' }}>
+                                                            {b.payment.payment_status}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span style={{ color: '#95a5a6', fontStyle: 'italic' }}>Not paid</span>
+                                                )}
+                                            </td>
+                                            <td style={styles.td}>
+                                                {b.status === "ASSIGNED" && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleDecision(b.id, "accept")}
+                                                            disabled={loading[b.id]}
+                                                            style={styles.acceptButton}
+                                                        >
+                                                            {loading[b.id] ? "Processing..." : "Accept"}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDecision(b.id, "reject")}
+                                                            disabled={loading[b.id]}
+                                                            style={styles.rejectButton}
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </>
+                                                )}
+
+                                                {b.status === "CONFIRMED" && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleMarkReached(b.id)}
+                                                            disabled={loading[`reached_${b.id}`]}
+                                                            style={styles.reachedButton}
+                                                        >
+                                                            {loading[`reached_${b.id}`] ? "Marking..." : "Mark as Reached"}
+                                                        </button>
+                                                    </>
+                                                )}

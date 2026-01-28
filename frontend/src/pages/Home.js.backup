@@ -1,0 +1,412 @@
+/**
+ * Home Page Component
+ * Main landing page for the Home Service Provider application
+ */
+import React, { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import api from "../api";
+
+function Home() {
+    const [services, setServices] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        // Fetch all available services
+        api.get("services/")
+            .then((res) => {
+                setServices(res.data);
+                setLoading(false);
+            })
+            .catch((err) => {
+                console.error("Error fetching services:", err);
+                setLoading(false);
+            });
+    }, []);
+
+    // Function to get service icon based on service name
+    const getServiceIcon = (serviceName) => {
+        const name = serviceName.toLowerCase();
+        if (name.includes("electric") || name.includes("electrical")) return "⚡";
+        if (name.includes("plumb") || name.includes("pipe")) return "🔧";
+        if (name.includes("ac") || name.includes("air")) return "❄️";
+        if (name.includes("paint")) return "🎨";
+        if (name.includes("carpenter")) return "🪚";
+        if (name.includes("clean")) return "🧼";
+        return "🏠"; // Default house icon
+    };
+
+    return (
+        <div style={styles.container}>
+            <div style={styles.hero}>
+                <h1 style={styles.heroTitle}>Welcome to Home Service Provider</h1>
+                <p style={styles.heroSubtitle}>
+                    Connecting customers with trusted professionals for all your home service needs
+                </p>
+            </div>
+
+            {/* User Path Section */}
+            <div style={styles.userPathSection}>
+                <h2 style={styles.sectionTitle}>For Customers</h2>
+                <p style={styles.pathDescription}>
+                    Find and book trusted professionals for your home services
+                </p>
+                <div style={styles.servicesGrid}>
+                    {services.slice(0, 3).map((service) => (
+                        <div key={service.id} style={styles.serviceCard}>
+                            <div style={styles.serviceIcon}>
+                                {getServiceIcon(service.name)}
+                            </div>
+                            <h3 style={styles.serviceName}>{service.name}</h3>
+                            <p style={styles.serviceDescription}>{service.description}</p>
+
+                            {service.price && (
+                                <div style={styles.servicePrice}>
+                                    Price: ₹{service.price}
+                                </div>
+                            )}
+
+                            <button
+                                style={styles.bookServiceBtn}
+                                onClick={() => {
+                                    localStorage.setItem('selectedService', JSON.stringify(service));
+                                    navigate('/login');
+                                }}
+                            >
+                                Book Service
+                            </button>
+                        </div>
+                    ))}
+                </div>
+                <div style={styles.viewAllServices}>
+                    <Link to="/login" style={styles.viewAllLink}>
+                        View All Services →
+                    </Link>
+                </div>
+            </div>
+
+            {/* Worker Path Section */}
+            <div style={styles.workerPathSection}>
+                <h2 style={styles.sectionTitle}>For Service Providers</h2>
+                <p style={styles.pathDescription}>
+                    Join our platform and grow your business by connecting with customers
+                </p>
+                <div style={styles.workerBenefits}>
+                    <div style={styles.benefitCard}>
+                        <div style={styles.benefitIcon}>💼</div>
+                        <h3>Flexible Work</h3>
+                        <p>Choose your own schedule and service areas</p>
+                    </div>
+                    <div style={styles.benefitCard}>
+                        <div style={styles.benefitIcon}>💰</div>
+                        <h3>Competitive Earnings</h3>
+                        <p>Get paid directly for your services</p>
+                    </div>
+                    <div style={styles.benefitCard}>
+                        <div style={styles.benefitIcon}>📱</div>
+                        <h3>Easy Management</h3>
+                        <p>Simple dashboard to manage bookings and payments</p>
+                    </div>
+                </div>
+                <div style={styles.workerActions}>
+                    <Link to="/register" style={styles.workerRegisterBtn}>
+                        Register as Worker
+                    </Link>
+                    <Link to="/login" style={styles.workerLoginBtn}>
+                        Worker Login
+                    </Link>
+                </div>
+            </div>
+
+            {/* Admin Path Section */}
+            <div style={styles.adminPathSection}>
+                <h2 style={styles.sectionTitle}>Platform Administration</h2>
+                <p style={styles.pathDescription}>
+                    Manage the entire platform, workers, services, and customer experience
+                </p>
+                <div style={styles.adminFeatures}>
+                    <div style={styles.featureCard}>
+                        <div style={styles.featureIcon}>📊</div>
+                        <h3>Analytics Dashboard</h3>
+                        <p>Monitor platform performance and metrics</p>
+                    </div>
+                    <div style={styles.featureCard}>
+                        <div style={styles.featureIcon}>👥</div>
+                        <h3>User Management</h3>
+                        <p>Approve workers and manage user accounts</p>
+                    </div>
+                    <div style={styles.featureCard}>
+                        <div style={styles.featureIcon}>⚙️</div>
+                        <h3>Service Control</h3>
+                        <p>Manage service listings and pricing</p>
+                    </div>
+                </div>
+                <div style={styles.adminLogin}>
+                    <Link to="/login" style={styles.adminLoginBtn}>
+                        Admin Login
+                    </Link>
+                </div>
+            </div>
+
+            <div style={styles.servicesSection}>
+                <h2 style={styles.sectionTitle}>Available Services</h2>
+
+                {loading ? (
+                    <p style={styles.loadingText}>Loading services...</p>
+                ) : services.length === 0 ? (
+                    <p style={styles.noServicesText}>No services available at the moment.</p>
+                ) : (
+                    <div style={styles.servicesGrid}>
+                        {services.map((service) => (
+                            <div key={service.id} style={styles.serviceCard}>
+                                <div style={styles.serviceIcon}>
+                                    {getServiceIcon(service.name)}
+                                </div>
+                                <h3 style={styles.serviceName}>{service.name}</h3>
+                                <p style={styles.serviceDescription}>{service.description}</p>
+
+                                {service.price && (
+                                    <div style={styles.servicePrice}>
+                                        Price: ₹{service.price}
+                                    </div>
+                                )}
+
+                                {service.duration && (
+                                    <div style={styles.serviceDuration}>
+                                        Duration: {service.duration} hours
+                                    </div>
+                                )}
+
+                                <div style={styles.serviceRating}>
+                                    ⭐ {service.average_rating ? service.average_rating.toFixed(1) : 'No ratings'} ({service.average_rating ? 'Based on reviews' : 'No reviews'})
+                                </div>
+
+                                <button
+                                    style={styles.bookServiceBtn}
+                                    onClick={() => {
+                                        // Store the selected service in localStorage and redirect to login
+                                        localStorage.setItem('selectedService', JSON.stringify(service));
+                                        navigate('/login');
+                                    }}
+                                >
+                                    Book Service
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+const styles = {
+    container: {
+        maxWidth: "1200px",
+        margin: "0 auto",
+        padding: "2rem",
+    },
+    hero: {
+        textAlign: "center",
+        marginBottom: "3rem",
+        backgroundColor: "rgba(255, 255, 255, 0.7)", // Semi-transparent background
+        padding: "2rem",
+        borderRadius: "10px",
+    },
+    heroTitle: {
+        fontSize: "2.5rem",
+        color: "#2c3e50",
+        marginBottom: "1rem",
+    },
+    heroSubtitle: {
+        fontSize: "1.2rem",
+        color: "#34495e",
+        marginBottom: "2rem",
+    },
+
+    servicesSection: {
+        marginTop: "2rem",
+    },
+    sectionTitle: {
+        fontSize: "2rem",
+        color: "#2c3e50",
+        textAlign: "center",
+        marginBottom: "2rem",
+    },
+    servicesGrid: {
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+        gap: "2rem",
+    },
+    serviceCard: {
+        backgroundColor: "rgba(255, 255, 255, 0.85)", // Semi-transparent background
+        padding: "1.5rem",
+        borderRadius: "8px",
+        boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
+        textAlign: "center",
+        transition: "transform 0.3s",
+    },
+    serviceCardHover: {
+        transform: "translateY(-5px)",
+    },
+    serviceIcon: {
+        fontSize: "3rem",
+        marginBottom: "1rem",
+    },
+    serviceName: {
+        fontSize: "1.5rem",
+        color: "#2c3e50",
+        marginBottom: "0.5rem",
+    },
+    serviceDescription: {
+        color: "#7f8c8d",
+        marginBottom: "1rem",
+        minHeight: "60px",
+    },
+    servicePrice: {
+        fontWeight: "500",
+        color: "#27ae60",
+        marginBottom: "0.5rem",
+    },
+    serviceDuration: {
+        color: "#f39c12",
+        marginBottom: "0.5rem",
+    },
+    serviceRating: {
+        color: "#f1c40f",
+        marginBottom: "1rem",
+        fontWeight: "500",
+    },
+    bookServiceBtn: {
+        padding: "0.75rem 1.5rem",
+        backgroundColor: "#e74c3c",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+        fontWeight: "500",
+        width: "100%",
+    },
+    loadingText: {
+        textAlign: "center",
+        fontSize: "1.2rem",
+        color: "#7f8c8d",
+    },
+    noServicesText: {
+        textAlign: "center",
+        fontSize: "1.2rem",
+        color: "#e74c3c",
+    },
+    userPathSection: {
+        backgroundColor: "rgba(236, 240, 241, 0.7)",
+        padding: "2rem",
+        borderRadius: "10px",
+        marginBottom: "2rem",
+    },
+    workerPathSection: {
+        backgroundColor: "rgba(52, 152, 219, 0.1)",
+        padding: "2rem",
+        borderRadius: "10px",
+        marginBottom: "2rem",
+    },
+    adminPathSection: {
+        backgroundColor: "rgba(155, 89, 182, 0.1)",
+        padding: "2rem",
+        borderRadius: "10px",
+        marginBottom: "2rem",
+    },
+    pathDescription: {
+        textAlign: "center",
+        fontSize: "1.1rem",
+        color: "#34495e",
+        marginBottom: "2rem",
+        maxWidth: "600px",
+        margin: "0 auto 2rem auto",
+    },
+    workerBenefits: {
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+        gap: "1.5rem",
+        marginBottom: "2rem",
+    },
+    benefitCard: {
+        backgroundColor: "white",
+        padding: "1.5rem",
+        borderRadius: "8px",
+        textAlign: "center",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    },
+    benefitIcon: {
+        fontSize: "2.5rem",
+        marginBottom: "1rem",
+    },
+    workerActions: {
+        display: "flex",
+        justifyContent: "center",
+        gap: "1rem",
+        flexWrap: "wrap",
+    },
+    workerRegisterBtn: {
+        padding: "0.75rem 1.5rem",
+        backgroundColor: "#27ae60",
+        color: "white",
+        textDecoration: "none",
+        borderRadius: "4px",
+        fontWeight: "500",
+        border: "none",
+        cursor: "pointer",
+    },
+    workerLoginBtn: {
+        padding: "0.75rem 1.5rem",
+        backgroundColor: "#3498db",
+        color: "white",
+        textDecoration: "none",
+        borderRadius: "4px",
+        fontWeight: "500",
+        border: "none",
+        cursor: "pointer",
+    },
+    adminFeatures: {
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+        gap: "1.5rem",
+        marginBottom: "2rem",
+    },
+    featureCard: {
+        backgroundColor: "white",
+        padding: "1.5rem",
+        borderRadius: "8px",
+        textAlign: "center",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    },
+    featureIcon: {
+        fontSize: "2.5rem",
+        marginBottom: "1rem",
+    },
+    adminLogin: {
+        textAlign: "center",
+    },
+    adminLoginBtn: {
+        padding: "0.75rem 1.5rem",
+        backgroundColor: "#9b59b6",
+        color: "white",
+        textDecoration: "none",
+        borderRadius: "4px",
+        fontWeight: "500",
+        border: "none",
+        cursor: "pointer",
+    },
+    viewAllServices: {
+        textAlign: "center",
+        marginTop: "1rem",
+    },
+    viewAllLink: {
+        color: "#e74c3c",
+        textDecoration: "none",
+        fontWeight: "500",
+        fontSize: "1.1rem",
+    },
+};
+
+export default Home;
