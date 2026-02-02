@@ -12,7 +12,6 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 function UserDashboard() {
     const navigate = useNavigate();
     const [services, setServices] = useState([]);
-    const [bookings, setBookings] = useState([]);
     const [serviceId, setServiceId] = useState(() => {
         // Check if a service was selected from the home page
         const selectedService = localStorage.getItem('selectedService');
@@ -68,11 +67,6 @@ function UserDashboard() {
         // Fetch services
         api.get("services/")
             .then((res) => setServices(res.data))
-            .catch((err) => console.error(err));
-
-        // Fetch user's bookings
-        api.get("bookings/my/")
-            .then((res) => setBookings(res.data))
             .catch((err) => console.error(err));
     };
 
@@ -160,78 +154,14 @@ function UserDashboard() {
             });
     };
 
-    const handleCancelBooking = (bookingId) => {
-        if (!window.confirm('Are you sure you want to cancel this booking? This action cannot be undone.')) {
-            return;
-        }
 
-        setLoading(prev => ({ ...prev, [`cancel_${bookingId}`]: true }));
-
-        api.put(`bookings/${bookingId}/cancel/`, {})
-            .then((res) => {
-                showNotification(res.data.message, "success");
-                loadData(); // Refresh bookings list
-            })
-            .catch((err) => {
-                const errorMsg = err.response?.data?.error || "Failed to cancel booking. Please try again.";
-                showNotification(errorMsg, "error");
-            })
-            .finally(() => {
-                setLoading(prev => ({ ...prev, [`cancel_${bookingId}`]: false }));
-            });
-    };
-
-    const handleAcceptSuggestion = (bookingId) => {
-        if (!window.confirm('Are you sure you want to accept the new date and time for this booking?')) {
-            return;
-        }
-
-        setLoading(prev => ({ ...prev, [`accept_${bookingId}`]: true }));
-
-        api.post(`bookings/${bookingId}/respond-to-delayed/`, {
-            action: 'accept'
-        })
-            .then((res) => {
-                showNotification(res.data.message, "success");
-                loadData(); // Refresh bookings list
-            })
-            .catch((err) => {
-                const errorMsg = err.response?.data?.error || "Failed to accept new date. Please try again.";
-                showNotification(errorMsg, "error");
-            })
-            .finally(() => {
-                setLoading(prev => ({ ...prev, [`accept_${bookingId}`]: false }));
-            });
-    };
-
-    const handleCancelSuggestion = (bookingId) => {
-        if (!window.confirm('Are you sure you want to reject the new date and time for this booking?')) {
-            return;
-        }
-
-        setLoading(prev => ({ ...prev, [`cancel_suggestion_${bookingId}`]: true }));
-
-        api.post(`bookings/${bookingId}/respond-to-delayed/`, {
-            action: 'cancel'
-        })
-            .then((res) => {
-                showNotification(res.data.message, "success");
-                loadData(); // Refresh bookings list
-            })
-            .catch((err) => {
-                const errorMsg = err.response?.data?.error || "Failed to cancel new date suggestion. Please try again.";
-                showNotification(errorMsg, "error");
-            })
-            .finally(() => {
-                setLoading(prev => ({ ...prev, [`cancel_suggestion_${bookingId}`]: false }));
-            });
-    };
 
     return (
         <div style={styles.container}>
             <h1>User Dashboard</h1>
 
-            <div style={styles.section}>
+            {/* Booking Form */}
+            <div id="booking-form" style={styles.section}>
                 <h2>Book a New Service</h2>
                 <form onSubmit={handleCreateBooking} style={styles.form}>
                     <div style={styles.formRow}>
@@ -298,87 +228,7 @@ function UserDashboard() {
                 </form>
             </div>
 
-            {/* User's Booking History */}
-            <div style={styles.section}>
-                <h2>Your Bookings</h2>
-                {bookings.length === 0 ? (
-                    <p>You have no bookings yet.</p>
-                ) : (
-                    <div style={styles.tableContainer}>
-                        <table style={styles.table}>
-                            <thead>
-                                <tr style={styles.tableHeader}>
-                                    <th style={styles.th}>ID</th>
-                                    <th style={styles.th}>Service</th>
-                                    <th style={styles.th}>Scheduled Date & Time</th>
-                                    <th style={styles.th}>Worker</th>
-                                    <th style={styles.th}>Status</th>
-                                    <th style={styles.th}>Suggested Date & Time</th>
-                                    <th style={styles.th}>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {bookings.map((booking) => (
-                                    <tr key={booking.id} style={styles.tableRow}>
-                                        <td style={styles.td}>{booking.id}</td>
-                                        <td style={styles.td}>{booking.service_name}</td>
-                                        <td style={styles.td}>{formatDateTime(booking.scheduled_date, booking.scheduled_time)}</td>
-                                        <td style={styles.td}>{booking.worker_username || "Not assigned"}</td>
-                                        <td style={styles.td}>
-                                            <span style={{
-                                                ...styles.statusBadge,
-                                                backgroundColor: getStatusColor(booking.status),
-                                            }}>
-                                                {booking.status}
-                                            </span>
-                                        </td>
-                                        <td style={styles.td}>
-                                            {booking.suggested_date && booking.suggested_time ? (
-                                                <div>
-                                                    <div>New: {formatDateTime(booking.suggested_date, booking.suggested_time)}</div>
-                                                    <div>Original: {formatDateTime(booking.scheduled_date, booking.scheduled_time)}</div>
-                                                </div>
-                                            ) : (
-                                                <span>No suggestion</span>
-                                            )}
-                                        </td>
-                                        <td style={styles.td}>
-                                            {booking.suggested_date && booking.suggested_time && booking.status !== 'COMPLETED' && booking.status !== 'CANCELLED' ? (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                                    <button
-                                                        onClick={() => handleAcceptSuggestion(booking.id)}
-                                                        style={{
-                                                            ...styles.payButton,
-                                                            backgroundColor: '#27ae60',
-                                                            color: 'white'
-                                                        }}
-                                                    >
-                                                        Accept New Date
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleCancelSuggestion(booking.id)}
-                                                        style={{
-                                                            ...styles.cancelButton,
-                                                            backgroundColor: '#e74c3c',
-                                                            color: 'white'
-                                                        }}
-                                                    >
-                                                        Cancel New Date
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <span style={{ color: "#95a5a6", fontStyle: "italic" }}>
-                                                    {booking.status === 'COMPLETED' || booking.status === 'CANCELLED' ? 'No actions' : 'No suggestion'}
-                                                </span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+
         </div>
     );
 }

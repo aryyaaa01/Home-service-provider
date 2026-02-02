@@ -75,72 +75,85 @@ def check_and_mark_delayed_bookings():
     from django.utils import timezone
     from django.contrib.auth.models import User
     from django.db.models import Q
-    from .models import Notification
-    from datetime import timedelta
+    from .models import Notification, Booking
+    from datetime import timedelta, datetime
 
     try:
-        # Get current time
-        # Convert to naive datetime for comparison
-        now = timezone.now().replace(tzinfo=None)
+        # Get current time in UTC
+        now = timezone.now()
+        logger.info(f"Starting delayed booking check at {now}")
 
-        # Get bookings with status 'ASSIGNED' or 'CONFIRMED' that are past their scheduled time
-        # We need to convert the date and time_slot to a datetime object for comparison
-        from django.db.models import F
-        from datetime import datetime
-
-        # Loop through all assigned or confirmed bookings
-        from .models import Booking
+        # Only check bookings that are CONFIRMED (ASSIGNED is not a valid status)
         bookings_to_check = Booking.objects.filter(
-            status__in=['ASSIGNED', 'CONFIRMED'])
+            status='CONFIRMED',
+            worker__isnull=False  # Worker must be assigned
+        )
 
+        logger.info(f"Found {bookings_to_check.count()} CONFIRMED bookings to check")
         delayed_count = 0
 
         for booking in bookings_to_check:
-            # Combine date and time_slot to create a datetime object
-            # Assuming time_slot is in format like "9:00 AM - 11:00 AM", we'll use the start time
-            time_parts = booking.time_slot.split(
-                ' - ')[0].split()  # Get first time part
-            time_str = time_parts[0]  # Get the time part like "9:00"
-            am_pm = time_parts[1] if len(
-                time_parts) > 1 else 'AM'  # Get AM/PM part
+            try:
+                # Combine date and time_slot to create a datetime object
+                # time_slot format: "9:00 AM - 11:00 AM" or "12:00" (24-hour)
+                time_slot_start = booking.time_slot.split(' - ')[0].strip()
+                time_parts = time_slot_start.split()
+                time_str = time_parts[0]  # Get the time part like "9:00" or "12:00"
+                
+                # Parse hour and minute
+                hour, minute = map(int, time_str.split(':'))
+                
+                # Check if AM/PM is present
+                if len(time_parts) > 1:
+                    # 12-hour format with AM/PM
+                    am_pm = time_parts[1].upper()
+                    
+                    if am_pm == 'PM':
+                        if hour != 12:
+                            hour += 12
+                    elif am_pm == 'AM':
+                        if hour == 12:
+                            hour = 0
+                
+                # Create a timezone-aware datetime combining the booking date with the scheduled time
+                # Assuming bookings are in the system's default timezone
+                scheduled_time = datetime.min.time().replace(hour=hour, minute=minute)
+                naive_datetime = datetime.combine(booking.date, scheduled_time)
+                
+                # Make it timezone-aware (use UTC for now, can be changed based on user timezone)
+                scheduled_datetime = timezone.make_aware(naive_datetime, timezone.utc)
 
-            # Parse the time
-            hour, minute = map(int, time_str.split(':'))
-            if am_pm.upper() == 'PM' and hour != 12:
-                hour += 12
-            elif am_pm.upper() == 'AM' and hour == 12:
-                hour = 0
+                # Check if scheduled time has passed and booking hasn't been marked as reached
+                # Give a grace period of 15 minutes
+                if now > scheduled_datetime + timedelta(minutes=15):
+                    logger.info(f"Booking {booking.id} marked as DELAYED. Scheduled: {scheduled_datetime}, Now: {now}")
+                    
+                    # Update booking status to DELAYED
+                    booking.status = 'DELAYED'
+                    booking.save()
 
-            # Create a datetime combining the booking date with the scheduled time
-            scheduled_datetime = datetime.combine(
-                booking.date, datetime.min.time().replace(hour=hour, minute=minute))
+                    # Create notification for admin
+                    # Get all admin users (both superusers and users with ADMIN role)
+                    admin_users = User.objects.filter(
+                        Q(is_superuser=True) |
+                        Q(userprofile__role='ADMIN')
+                    ).distinct()
 
-            # Check if scheduled time has passed and booking hasn't been marked as reached
-            # Give a grace period of 15 minutes
-            if now > scheduled_datetime + timedelta(minutes=15) and booking.status in ['ASSIGNED', 'CONFIRMED']:
-                # Update booking status to DELAYED
-                booking.status = 'DELAYED'
-                booking.save()
+                    for admin_user in admin_users:
+                        Notification.objects.create(
+                            user=admin_user,
+                            title='Booking Delayed - Worker Did Not Reach On Time',
+                            message=f'Worker did not reach on time for booking #{booking.id} ({booking.service.name}). Service is delayed.',
+                            notification_type='SYSTEM'
+                        )
 
-                # Create notification for admin
-                # Get all admin users (both superusers and users with ADMIN role)
-                admin_users = User.objects.filter(
-                    Q(is_superuser=True) |
-                    Q(userprofile__role='ADMIN')
-                ).distinct()
+                    delayed_count += 1
 
-                for admin_user in admin_users:
-                    notification = Notification.objects.create(
-                        user=admin_user,
-                        title='Booking Delayed - Worker Did Not Reach On Time',
-                        message=f'Worker did not reach on time for booking #{booking.id} ({booking.service.name}). Service is delayed.',
-                        notification_type='SYSTEM'
-                    )
+            except Exception as e:
+                logger.error(f"Error processing booking {booking.id}: {str(e)}")
+                continue
 
-                delayed_count += 1
-
-        logger.info(
-            f"Checked for delayed bookings. {delayed_count} bookings marked as delayed.")
+        logger.info(f"Checked for delayed bookings. {delayed_count} bookings marked as delayed.")
         return f"{delayed_count} bookings marked as delayed."
 
     except Exception as exc:

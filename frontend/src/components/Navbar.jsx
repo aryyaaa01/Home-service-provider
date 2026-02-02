@@ -93,11 +93,17 @@ function Navbar() {
             textDecoration: "none",
             padding: "0.75rem 1.25rem",
             borderRadius: "6px",
-            transition: "background-color 0.3s ease",
+            transition: "all 0.3s ease",
+            cursor: "pointer",
         },
         activeLink: {
             backgroundColor: "#34495e",
             fontWeight: "bold",
+        },
+        linkHover: {
+            backgroundColor: "#34495e",
+            transform: "translateY(-2px)",
+            boxShadow: "0 4px 8px rgba(0,0,0,0.2)",
         },
         mobileMenuButton: {
             display: "none",
@@ -177,15 +183,41 @@ function Navbar() {
     // Apply hover effect to links
     const linkStyle = (path) => ({
         ...styles.link,
-        ...(location.pathname === path ? styles.activeLink : {})
+        ...(location.pathname === path ? styles.activeLink : {}),
     });
+
+    // Add hover effect handler
+    const handleMouseEnter = (e) => {
+        Object.assign(e.target.style, styles.linkHover);
+    };
+
+    const handleMouseLeave = (e) => {
+        const isActive = e.target.getAttribute('href') === location.pathname;
+        if (!isActive) {
+            e.target.style.backgroundColor = '';
+            e.target.style.transform = '';
+            e.target.style.boxShadow = '';
+        }
+    };
+
+    // Enhanced link component with hover effects
+    const NavLink = ({ to, children, ...props }) => (
+        <Link
+            to={to}
+            style={linkStyle(to)}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            {...props}
+        >
+            {children}
+        </Link>
+    );
 
     return (
         <nav style={styles.navbar}>
             <Link
                 to={token && role === "WORKER" ? "/worker-home" :
-                    token && role === "ADMIN" ? "/admin-home" :
-                        token && role === "USER" ? "/user-home" : "/"}
+                    token && role === "ADMIN" ? "/admin-home" : "/"}
                 style={styles.logo}
             >
                 🏠
@@ -201,32 +233,29 @@ function Navbar() {
                         <>
                             {role === "WORKER" && (
                                 <>
-                                    <Link to="/worker-dashboard#assigned-bookings" style={styles.link}>
-                                        Your Assigned Bookings
-                                    </Link>
-                                    <Link to="/worker-dashboard#performance" style={styles.link}>
-                                        Your Performance
-                                    </Link>
-                                    <Link to="/worker-dashboard#reviews" style={styles.link}>
+                                    <NavLink to="/worker-dashboard#assigned-bookings">
+                                        Assigned Bookings
+                                    </NavLink>
+                                    <NavLink to="/worker-dashboard#reviews">
                                         Customer Reviews
-                                    </Link>
-                                    <Link to="/earnings" style={linkStyle("/earnings")}>
+                                    </NavLink>
+                                    <NavLink to="/earnings">
                                         Earnings
-                                    </Link>
-                                    <Link to="/profile" style={linkStyle("/profile")}>
+                                    </NavLink>
+                                    <NavLink to="/profile">
                                         Profile
-                                    </Link>
-                                    <Link to="/otp" style={linkStyle("/otp")}>
+                                    </NavLink>
+                                    <NavLink to="/otp">
                                         Verify OTP
-                                    </Link>
-                                    <Link to="/notifications" style={{ ...linkStyle("/notifications"), position: "relative" }}>
+                                    </NavLink>
+                                    <NavLink to="/notifications" style={{ position: "relative" }}>
                                         Notifications
                                         {unreadCount > 0 && (
                                             <span style={styles.notificationBadge}>
                                                 {unreadCount}
                                             </span>
                                         )}
-                                    </Link>
+                                    </NavLink>
                                     {username && (
                                         <span style={styles.roleIndicator}>
                                             {username}
@@ -239,26 +268,26 @@ function Navbar() {
                             )}
                             {role === "USER" && (
                                 <>
-                                    <Link to="/user-home" style={linkStyle("/user-home")}>
+                                    <NavLink to="/">
                                         Home
-                                    </Link>
-                                    <Link to="/user-dashboard" style={linkStyle("/user-dashboard")}>
+                                    </NavLink>
+                                    <NavLink to="/user-dashboard">
                                         Book Service
-                                    </Link>
-                                    <Link to="/booking-history" style={linkStyle("/booking-history")}>
+                                    </NavLink>
+                                    <NavLink to="/booking-history">
                                         Booking History
-                                    </Link>
-                                    <Link to="/profile" style={linkStyle("/profile")}>
+                                    </NavLink>
+                                    <NavLink to="/profile">
                                         Profile
-                                    </Link>
-                                    <Link to="/notifications" style={{ ...linkStyle("/notifications"), position: "relative" }}>
+                                    </NavLink>
+                                    <NavLink to="/notifications" style={{ position: "relative" }}>
                                         Notifications
                                         {unreadCount > 0 && (
                                             <span style={styles.notificationBadge}>
                                                 {unreadCount}
                                             </span>
                                         )}
-                                    </Link>
+                                    </NavLink>
                                     <button onClick={handleLogout} style={styles.logoutBtn}>
                                         Logout
                                     </button>
@@ -270,35 +299,35 @@ function Navbar() {
                     {/* Admin navigation */}
                     {token && role === "ADMIN" && (
                         <>
-                            <Link to="/admin-home" style={linkStyle("/admin-home")}>
+                            <NavLink to="/admin-home">
                                 Dashboard
-                            </Link>
-                            <Link to="/admin-dashboard?tab=workers" style={linkStyle("/admin-dashboard?tab=workers")}>
+                            </NavLink>
+                            <NavLink to="/admin-dashboard?tab=workers">
                                 Workers
-                            </Link>
-                            <Link to="/admin-dashboard?tab=users" style={linkStyle("/admin-dashboard?tab=users")}>
+                            </NavLink>
+                            <NavLink to="/admin-dashboard?tab=users">
                                 Users
-                            </Link>
-                            <Link to="/admin-dashboard?tab=bookings" style={linkStyle("/admin-dashboard?tab=bookings")}>
+                            </NavLink>
+                            <NavLink to="/admin-dashboard?tab=bookings">
                                 Bookings
-                            </Link>
-                            <Link to="/admin-dashboard?tab=services" style={linkStyle("/admin-dashboard?tab=services")}>
+                            </NavLink>
+                            <NavLink to="/admin-dashboard?tab=services">
                                 Services
-                            </Link>
-                            <Link to="/admin-dashboard?tab=ratings" style={linkStyle("/admin-dashboard?tab=ratings")}>
+                            </NavLink>
+                            <NavLink to="/admin-dashboard?tab=ratings">
                                 Ratings & Reviews
-                            </Link>
-                            <Link to="/admin-dashboard?tab=payments" style={linkStyle("/admin-dashboard?tab=payments")}>
+                            </NavLink>
+                            <NavLink to="/admin-dashboard?tab=payments">
                                 Payments
-                            </Link>
-                            <Link to="/notifications" style={{ ...linkStyle("/notifications"), position: "relative" }}>
+                            </NavLink>
+                            <NavLink to="/notifications" style={{ position: "relative" }}>
                                 Notifications
                                 {unreadCount > 0 && (
                                     <span style={styles.notificationBadge}>
                                         {unreadCount}
                                     </span>
                                 )}
-                            </Link>
+                            </NavLink>
                             <button onClick={handleLogout} style={styles.logoutBtn}>
                                 Logout
                             </button>
@@ -308,15 +337,15 @@ function Navbar() {
                     {/* Guest navigation */}
                     {!token && (
                         <>
-                            <Link to="/" style={linkStyle("/")}>
+                            <NavLink to="/">
                                 Home
-                            </Link>
-                            <Link to="/login" style={linkStyle("/login")}>
+                            </NavLink>
+                            <NavLink to="/login">
                                 Login
-                            </Link>
-                            <Link to="/register" style={linkStyle("/register")}>
+                            </NavLink>
+                            <NavLink to="/register">
                                 Register
-                            </Link>
+                            </NavLink>
                         </>
                     )}
                 </div>
@@ -353,19 +382,7 @@ function Navbar() {
                                             }, 100);
                                         }}
                                     >
-                                        Your Assigned Bookings
-                                    </Link>
-                                    <Link
-                                        to="/worker-dashboard#performance"
-                                        style={styles.mobileLink}
-                                        onClick={() => {
-                                            setIsMenuOpen(false);
-                                            setTimeout(() => {
-                                                document.getElementById('performance')?.scrollIntoView({ behavior: 'smooth' });
-                                            }, 100);
-                                        }}
-                                    >
-                                        Your Performance
+                                        Assigned Bookings
                                     </Link>
                                     <Link
                                         to="/worker-dashboard#reviews"
@@ -418,7 +435,7 @@ function Navbar() {
                             {role === "USER" && (
                                 <>
                                     <Link
-                                        to="/user-home"
+                                        to="/"
                                         style={styles.mobileLink}
                                         onClick={() => setIsMenuOpen(false)}
                                     >

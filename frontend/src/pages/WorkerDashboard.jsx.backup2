@@ -238,78 +238,41 @@ function WorkerDashboard() {
                                             <td style={styles.td}>
                                                 {b.payment ? (
                                                     <div>
-                                                        <div>₹{b.payment.provider_amount}</div>
-                                                        <div style={{ fontSize: '0.8rem', color: '#27ae60' }}>
-                                                            {b.payment.payment_status}
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <span style={{ color: '#95a5a6', fontStyle: 'italic' }}>Not paid</span>
-                                                )}
-                                            </td>                                            <td style={styles.td}>
-                                                {b.status === "ASSIGNED" && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => handleDecision(b.id, "accept")}
-                                                            disabled={loading[b.id]}
-                                                            style={styles.acceptButton}
-                                                        >
-                                                            {loading[b.id] ? "Processing..." : "Accept"}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDecision(b.id, "reject")}
-                                                            disabled={loading[b.id]}
-                                                            style={styles.rejectButton}
-                                                        >
-                                                            Reject
-                                                        </button>
-                                                    </>
-                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
 
-                                                {b.status === "CONFIRMED" && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => handleMarkReached(b.id)}
-                                                            disabled={loading[`reached_${b.id}`]}
-                                                            style={styles.reachedButton}
-                                                        >
-                                                            {loading[`reached_${b.id}`] ? "Marking..." : "Mark as Reached"}
-                                                        </button>
-                                                    </>
-                                                )}
-                                                {b.status === "REACHED" && (
-                                                    <button
-                                                        onClick={() => handleGenerateOTP(b.id)}
-                                                        disabled={loading[`otp_${b.id}`]}
-                                                        style={styles.generateOtpButton}
-                                                    >
-                                                        {loading[`otp_${b.id}`] ? "Generating..." : "Generate OTP"}
-                                                    </button>
-                                                )}
-                                    </tr>                                                <div id="performance" style={styles.section}>
-                                                    <h2>Your Performance</h2>
-                                                    <div style={styles.statsContainer}>
-                                                        <div style={styles.statCard}>
-                                                            <h3>Total Jobs</h3>
-                                                            <p style={styles.statNumber}>{bookings.length}</p>
-                                                        </div>
-                                                        <div style={styles.statCard}>
-                                                            <h3>Average Rating</h3>
-                                                            <div style={styles.ratingContainer}>
-                                                                <div style={styles.starsContainer}>
-                                                                    {renderStars(calculateAverageRating(workerRatings))}
-                                                                </div>
-                                                                <p style={styles.statNumber}>{calculateAverageRating(workerRatings).toFixed(1)}/5</p>
-                                                            </div>
-                                                        </div>
-                                                        <div style={styles.statCard}>
-                                                            <h3>Total Reviews</h3>
-                                                            <p style={styles.statNumber}>{workerRatings.length}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
+            {/* Your Performance Section - only show when active */}
+            {(activeSection === 'all' || activeSection === 'performance') && (
+                <div id="performance" style={styles.section}>
+                    <h2>Your Performance</h2>
+                    <div style={styles.statsContainer}>
+                        <div style={styles.statCard}>
+                            <h3>Total Jobs</h3>
+                            <p style={styles.statNumber}>{bookings.length}</p>
+                        </div>
+                        <div style={styles.statCard}>
+                            <h3>Average Rating</h3>
+                            <div style={styles.ratingContainer}>
+                                <div style={styles.starsContainer}>
+                                    {renderStars(calculateAverageRating(workerRatings))}
+                                </div>
+                                <p style={styles.statNumber}>{calculateAverageRating(workerRatings).toFixed(1)}/5</p>
+                            </div>
+                        </div>
+                        <div style={styles.statCard}>
+                            <h3>Total Reviews</h3>
+                            <p style={styles.statNumber}>{workerRatings.length}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
                                             {/* Customer Reviews Section - only show when active */}
                                             {(activeSection === 'all' || activeSection === 'reviews') && (
                                                 <div id="reviews" style={styles.section}>

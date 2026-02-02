@@ -25,6 +25,8 @@ import Notifications from "./pages/Notifications.jsx";
 import Earnings from "./pages/Earnings.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import BookingHistory from "./pages/BookingHistory.jsx";
+import BookingDetails from "./pages/BookingDetails.jsx";
+import RatingReviewPage from "./pages/RatingReviewPage.jsx";
 
 // Create notification context
 export const NotificationContext = createContext();
@@ -146,6 +148,22 @@ function App() {
                             element={
                                 <ProtectedRoute allowedRoles={["USER"]}>
                                     <BookingHistory />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/booking-details/:id"
+                            element={
+                                <ProtectedRoute allowedRoles={["USER"]}>
+                                    <BookingDetails />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/rate-review/:bookingId"
+                            element={
+                                <ProtectedRoute allowedRoles={["USER"]}>
+                                    <RatingReviewPage />
                                 </ProtectedRoute>
                             }
                         />

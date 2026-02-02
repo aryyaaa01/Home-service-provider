@@ -78,8 +78,16 @@ function AdminDashboard() {
                 break;
 
             case "bookings":
-                api.get("admin/bookings/")
-                    .then(res => setBookings(res.data))
+                Promise.all([
+                    api.get("admin/bookings/"),
+                    api.get("admin/workers/"),
+                    api.get("services/")
+                ])
+                    .then(([bookingsRes, workersRes, servicesRes]) => {
+                        setBookings(bookingsRes.data);
+                        setWorkers(workersRes.data);
+                        setAllServices(servicesRes.data);
+                    })
                     .catch(err => {
                         console.error("Error loading bookings:", err);
                         showNotification("Failed to load bookings.", "error");
@@ -278,7 +286,10 @@ function AdminDashboard() {
                                 </thead>
                                 <tbody>
                                     {workers.map((w) => (
-                                        <tr key={w.id} style={styles.tableRow}>
+                                        <tr key={w.id} style={{
+                                            ...styles.tableRow,
+                                            backgroundColor: w.id % 2 === 0 ? '#f8fafc' : 'white'
+                                        }}>
                                             <td style={styles.td}>{w.id}</td>
                                             <td style={styles.td}>{w.username}</td>
                                             <td style={styles.td}>{w.email}</td>
@@ -361,7 +372,10 @@ function AdminDashboard() {
                                 </thead>
                                 <tbody>
                                     {users.map((u) => (
-                                        <tr key={u.id} style={styles.tableRow}>
+                                        <tr key={u.id} style={{
+                                            ...styles.tableRow,
+                                            backgroundColor: u.id % 2 === 0 ? '#f8fafc' : 'white'
+                                        }}>
                                             <td style={styles.td}>{u.id}</td>
                                             <td style={styles.td}>{u.username}</td>
                                             <td style={styles.td}>{u.email}</td>
@@ -400,7 +414,10 @@ function AdminDashboard() {
                                 </thead>
                                 <tbody>
                                     {bookings.map((b) => (
-                                        <tr key={b.id} style={styles.tableRow}>
+                                        <tr key={b.id} style={{
+                                            ...styles.tableRow,
+                                            backgroundColor: b.id % 2 === 0 ? '#f8fafc' : 'white'
+                                        }}>
                                             <td style={styles.td}>{b.id}</td>
                                             <td style={styles.td}>{b.user_username}</td>
                                             <td style={styles.td}>{b.service_name}</td>
@@ -428,7 +445,7 @@ function AdminDashboard() {
                                                     <span style={{ color: '#95a5a6' }}>No suggestion</span>
                                                 )}
                                             </td>
-                                            <td style={styles.td}>{b.address}</td>
+                                            <td style={{ ...styles.td, maxWidth: '200px', wordWrap: 'break-word' }}>{b.address}</td>
                                             <td style={styles.td}>
                                                 {!b.worker && b.status === "PENDING" ? (
                                                     <button
@@ -572,7 +589,10 @@ function AdminDashboard() {
                                     </thead>
                                     <tbody>
                                         {allServices.map((s) => (
-                                            <tr key={s.id} style={styles.tableRow}>
+                                            <tr key={s.id} style={{
+                                                ...styles.tableRow,
+                                                backgroundColor: s.id % 2 === 0 ? '#f8fafc' : 'white'
+                                            }}>
                                                 <td style={styles.td}>{s.id}</td>
                                                 <td style={styles.td}>{s.name}</td>
                                                 <td style={styles.td}>{s.description}</td>
@@ -619,7 +639,10 @@ function AdminDashboard() {
                                 </thead>
                                 <tbody>
                                     {ratings.map((rating) => (
-                                        <tr key={rating.id} style={styles.tableRow}>
+                                        <tr key={rating.id} style={{
+                                            ...styles.tableRow,
+                                            backgroundColor: rating.id % 2 === 0 ? '#f8fafc' : 'white'
+                                        }}>
                                             <td style={styles.td}>{rating.booking}</td>
                                             <td style={styles.td}>{rating.user_username}</td>
                                             <td style={styles.td}>{rating.worker_username}</td>
@@ -671,7 +694,10 @@ function AdminDashboard() {
                                 </thead>
                                 <tbody>
                                     {payments.map((booking) => (
-                                        <tr key={booking.id} style={styles.tableRow}>
+                                        <tr key={booking.id} style={{
+                                            ...styles.tableRow,
+                                            backgroundColor: booking.id % 2 === 0 ? '#f8fafc' : 'white'
+                                        }}>
                                             <td style={styles.td}>{booking.id}</td>
                                             <td style={styles.td}>{booking.user_username}</td>
                                             <td style={styles.td}>{booking.service_name}</td>
@@ -716,11 +742,22 @@ function AdminDashboard() {
                                 const requiredCategory = bookingService ? bookingService.category : null;
 
                                 // Filter workers who are approved and provide the required service category
+                                console.log('Selected booking service name:', selectedBooking.service_name);
+                                console.log('All services:', allServices);
+                                console.log('All workers:', workers);
+
                                 const availableWorkers = workers.filter(w => {
-                                    return w.is_approved &&
-                                        w.services &&
+                                    console.log(`Checking worker ${w.username}:`, w);
+                                    console.log(`Worker services:`, w.services);
+                                    const hasService = w.services &&
                                         Array.isArray(w.services) &&
-                                        w.services.some(s => s.name === selectedBooking.service_name);
+                                        w.services.some(s => {
+                                            console.log(`Comparing: "${s.name}" === "${selectedBooking.service_name}"`);
+                                            console.log(`Match result:`, s.name === selectedBooking.service_name);
+                                            return s.name === selectedBooking.service_name;
+                                        });
+                                    console.log(`Worker ${w.username} has service:`, hasService);
+                                    return w.is_approved && hasService;
                                 });
 
                                 if (availableWorkers.length === 0) {
@@ -833,15 +870,18 @@ const styles = {
         maxWidth: "1200px",
         margin: "0 auto",
         padding: "2rem",
+        backgroundColor: "#f5f7fa",
+        minHeight: "100vh",
     },
 
 
 
     section: {
-        backgroundColor: "rgba(255, 255, 255, 0.8)",
+        backgroundColor: "white",
         padding: "1.5rem",
         borderRadius: "8px",
         boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+        marginBottom: "2rem",
     },
     loading: {
         textAlign: "center",
@@ -851,31 +891,49 @@ const styles = {
     },
     tableContainer: {
         overflowX: "auto",
+        backgroundColor: "white",
+        padding: "1.5rem",
+        borderRadius: "8px",
+        boxShadow: "0 4px 6px rgba(0, 0, 0, 0.05)",
+        marginBottom: "2rem",
     },
     table: {
         width: "100%",
         borderCollapse: "collapse",
     },
     tableHeader: {
-        backgroundColor: "#34495e",
+        backgroundColor: "#2c3e50",
         color: "white",
     },
     th: {
-        padding: "0.75rem",
+        padding: "1rem",
         textAlign: "left",
+        fontWeight: "600",
+        fontSize: "0.9rem",
+        textTransform: "uppercase",
+        letterSpacing: "0.5px",
     },
     tableRow: {
-        borderBottom: "1px solid #ecf0f1",
+        borderBottom: "1px solid #e1e8ed",
+        transition: "background-color 0.2s ease",
+    },
+    tableRowHover: {
+        backgroundColor: "#f8fafc",
     },
     td: {
-        padding: "0.75rem",
+        padding: "1rem",
+        verticalAlign: "top",
     },
     statusBadge: {
-        padding: "0.25rem 0.75rem",
-        borderRadius: "12px",
+        padding: "0.4rem 0.8rem",
+        borderRadius: "20px",
         color: "white",
         fontSize: "0.85rem",
-        fontWeight: "500",
+        fontWeight: "600",
+        display: "inline-block",
+        minWidth: "80px",
+        textAlign: "center",
+        textTransform: "capitalize",
     },
     approveButton: {
         padding: "0.5rem 1rem",

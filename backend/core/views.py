@@ -1708,9 +1708,9 @@ def mark_booking_reached(request, booking_id):
             user=request.user, role='WORKER')
         booking = Booking.objects.get(id=booking_id, worker=worker_profile)
 
-        # Only allow marking as reached if status is ASSIGNED and before scheduled time
-        if booking.status != 'ASSIGNED':
-            return Response({'error': 'Cannot mark as reached. Booking is not in ASSIGNED status.'},
+        # Only allow marking as reached if status is CONFIRMED
+        if booking.status != 'CONFIRMED':
+            return Response({'error': 'Cannot mark as reached. Booking is not in CONFIRMED status.'},
                             status=status.HTTP_400_BAD_REQUEST)
 
         # Update booking status to REACHED and set reached_at timestamp
@@ -1845,6 +1845,62 @@ def user_respond_to_delayed_service(request, booking_id):
         else:
             return Response({'error': 'Invalid action. Must be either "accept" or "cancel"'},
                             status=status.HTTP_400_BAD_REQUEST)
+
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def rate_booking(request, booking_id):
+    """
+    Rate a booking with rating and review
+    """
+    try:
+        booking = Booking.objects.get(id=booking_id)
+
+        # Verify that the authenticated user is the one who made the booking
+        if booking.user != request.user:
+            return Response({'error': 'You can only rate your own bookings'}, status=status.HTTP_403_FORBIDDEN)
+
+        rating_value = request.data.get('rating')
+        review_text = request.data.get('review', '')
+
+        # Validation
+        if not rating_value or rating_value < 1 or rating_value > 5:
+            return Response({'error': 'Rating must be between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if booking is completed before allowing rating
+        if booking.status != 'COMPLETED':
+            return Response({'error': 'You can only rate completed bookings'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if booking is already rated
+        if booking.is_rated:
+            return Response({'error': 'This booking has already been rated'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create the rating
+        rating = RatingReview.objects.create(
+            user=request.user,
+            rating=rating_value,
+            review=review_text,
+            service=booking.service,
+            booking=booking,
+            worker=booking.worker  # Link to the worker who completed the service
+        )
+
+        # Mark booking as rated
+        booking.is_rated = True
+        booking.save()
+
+        # Return success response
+        return Response({
+            'message': 'Rating submitted successfully',
+            'rating_id': rating.id,
+            'rating': rating.rating,
+            'review': rating.review
+        }, status=status.HTTP_201_CREATED)
 
     except Booking.DoesNotExist:
         return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)

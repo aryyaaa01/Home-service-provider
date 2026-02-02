@@ -67,4 +67,8 @@ urlpatterns = [
     # Reached status endpoints
     path('bookings/<int:booking_id>/mark-reached/',
          views.mark_booking_reached, name='mark_booking_reached'),
+
+    # Rating endpoints
+    path('bookings/<int:booking_id>/rate/',
+         views.rate_booking, name='rate_booking'),
 ]

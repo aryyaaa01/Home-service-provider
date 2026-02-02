@@ -40,7 +40,7 @@ function Login() {
             // Redirect based on user role
             switch (response.data.user.role) {
                 case "USER":
-                    navigate("/user-home");
+                    navigate("/");
                     break;
                 case "WORKER":
                     navigate("/worker-home");
